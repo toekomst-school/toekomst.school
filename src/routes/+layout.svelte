@@ -11,11 +11,13 @@
   let breadcrumbMain = 'Home';
   let breadcrumbSecond = '';
   let breadcrumbPage = '';
+  let breadcrumbSecondHref = '';
 
   $: currentPath = ($page && $page.url && $page.url.pathname) ? $page.url.pathname : '';
   $: if (typeof currentPath === 'string' && currentPath.length > 0) {
     if (currentPath.startsWith('/lessen')) {
       breadcrumbSecond = 'Lessen';
+      breadcrumbSecondHref = '/lessen';
       if (currentPath === '/lessen') {
         breadcrumbPage = '';
       } else if (currentPath === '/lessen/nieuw') {
@@ -25,13 +27,39 @@
       } else if (/^\/lessen\/[a-zA-Z0-9_-]+$/.test(currentPath)) {
         breadcrumbPage = 'Les Details';
       }
+    } else if (currentPath.startsWith('/cursussen')) {
+      breadcrumbSecond = 'Cursussen';
+      breadcrumbSecondHref = '/cursussen';
+      if (currentPath === '/cursussen') {
+        breadcrumbPage = '';
+      } else if (/^\/cursussen\/[a-zA-Z0-9_-]+$/.test(currentPath)) {
+        breadcrumbPage = 'Cursus Details';
+      }
+    } else if (currentPath.startsWith('/planning')) {
+      breadcrumbSecond = 'Planning';
+      breadcrumbSecondHref = '/planning';
+      if (currentPath === '/planning') {
+        breadcrumbPage = '';
+      } else if (currentPath === '/planning/beschikbaar') {
+        breadcrumbPage = 'Beschikbaar';
+      }
+    } else if (currentPath.startsWith('/dashboard')) {
+      breadcrumbSecond = 'Dashboard';
+      breadcrumbSecondHref = '/dashboard';
+      breadcrumbPage = '';
+    } else if (currentPath.startsWith('/remote')) {
+      breadcrumbSecond = 'Remote';
+      breadcrumbSecondHref = '/remote';
+      breadcrumbPage = '';
     } else {
-      breadcrumbSecond = 'Building Your Application';
-      breadcrumbPage = 'Data Fetching';
+      breadcrumbSecond = 'Overzicht';
+      breadcrumbSecondHref = '/';
+      breadcrumbPage = '';
     }
   } else {
     breadcrumbMain = 'Home';
     breadcrumbSecond = '';
+    breadcrumbSecondHref = '';
     breadcrumbPage = '';
   }
 </script>
@@ -52,11 +80,7 @@
               {#if breadcrumbSecond}
                 <Breadcrumb.Separator class="hidden md:block" />
                 <Breadcrumb.Item>
-                  {#if breadcrumbSecond === 'Lessen'}
-                    <Breadcrumb.Link href="/lessen">Lessen</Breadcrumb.Link>
-                  {:else}
-                    <Breadcrumb.Link href="#">{breadcrumbSecond}</Breadcrumb.Link>
-                  {/if}
+                  <Breadcrumb.Link href={breadcrumbSecondHref}>{breadcrumbSecond}</Breadcrumb.Link>
                 </Breadcrumb.Item>
               {/if}
               {#if breadcrumbPage}

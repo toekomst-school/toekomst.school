@@ -5,6 +5,7 @@
         { title: "dashboard", url: "/dashboard" },
         { title: "Beschikbaar", url: "/beschikbaar" },
         { title: "planning", url: "/planning" },
+        { title: "cursussen", url: "/cursussen" },
         { title: "lessen", url: "/lessen" },
         { title: "remote", url: "/remote" },
       ],

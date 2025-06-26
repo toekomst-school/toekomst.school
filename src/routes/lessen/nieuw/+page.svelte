@@ -23,11 +23,13 @@
   let intro = '';
   let kern = '';
   let reflectie = '';
-  let materialen = '';
   let evaluatie = '';
   let feedback = '';
   let aanvullend = '';
   let cursus = '';
+  let cursusOptions: { value: string, label: string }[] = [];
+  let cursusLoading = true;
+  let cursusError = '';
 
   let error = '';
   let adding = false;
@@ -69,13 +71,18 @@
     { value: 14, label: 'Klas 6' },
   ];
 
-  const cursusOptions = [
-    { value: '', label: 'Selecteer een cursus...' },
-    { value: 'mediawijsheid', label: 'Mediawijsheid' },
-    { value: 'veilig-internet', label: 'Veilig Internet' },
-    { value: 'programmeren', label: 'Programmeren' },
-    { value: 'ai-basis', label: 'AI Basis' },
-  ];
+  async function fetchCursusOptions() {
+    cursusLoading = true;
+    try {
+      const res = await databases.listDocuments('lessen', 'cursus');
+      cursusOptions = res.documents.map((c: any) => ({ value: c.$id, label: c.name }));
+    } catch (e) {
+      cursusError = 'Kon cursussen niet ophalen.';
+      console.error(e);
+    } finally {
+      cursusLoading = false;
+    }
+  }
 
   function getGroupLabel(year: number) {
     if (year >= 1 && year <= 8) return `Groep ${year}`;
@@ -120,7 +127,10 @@
   }
 
   onMount(async () => {
-    const params = get(page).params;
+    await fetchCursusOptions();
+    const $page = get(page);
+    const params = $page.params;
+    const searchParams = $page.url?.searchParams;
     if (params.id) {
       editing = true;
       lessonId = params.id;
@@ -139,7 +149,6 @@
         intro = lesson.intro || '';
         kern = lesson.kern || '';
         reflectie = lesson.reflectie || '';
-        materialen = lesson.materialen || '';
         evaluatie = lesson.evaluatie || '';
         feedback = lesson.feedback || '';
         aanvullend = lesson.aanvullend || '';
@@ -154,6 +163,10 @@
       duur = 45;
       cursus = '';
       kerndoelenSelected = [];
+      // Prefill cursus from query param if present
+      if (searchParams && searchParams.get('cursus')) {
+        cursus = searchParams.get('cursus');
+      }
     }
   });
 
@@ -174,7 +187,6 @@
         intro,
         kern,
         reflectie,
-        materialen,
         evaluatie,
         feedback,
         aanvullend
@@ -204,11 +216,19 @@
   <form on:submit|preventDefault={saveLesson} class="grid gap-4">
     <div>
       <label for="cursus">Cursus:</label>
-      <select id="cursus" bind:value={cursus} required>
-        {#each cursusOptions as opt}
-          <option value={opt.value} disabled={opt.value === ''} selected={opt.value === ''}>{opt.label}</option>
-        {/each}
-      </select>
+      {#if cursusLoading}
+        <div>Bezig met laden...</div>
+      {:else if cursusOptions.length === 0}
+        <div class="text-red-500">Geen cursussen gevonden. Maak eerst een cursus aan.</div>
+        <select id="cursus" disabled><option>Geen cursussen beschikbaar</option></select>
+      {:else}
+        <select id="cursus" bind:value={cursus} required>
+          <option value="" disabled selected>Selecteer een cursus...</option>
+          {#each cursusOptions as opt}
+            <option value={opt.value}>{opt.label}</option>
+          {/each}
+        </select>
+      {/if}
       <small>Kies de cursus waar deze les bij hoort.</small>
     </div>
     <div>
@@ -332,11 +352,6 @@ Programmeeropdracht met een eenvoudige tool zoals Scratch.</small>
       <label>Reflectie en Afronding (5-10 min):</label>
       <textarea class="border w-full" bind:value={reflectie} required></textarea>
       <small>Bespreek wat ze hebben geleerd en hoe dit toepasbaar is in het dagelijks leven. Stel vragen om te controleren of het doel is bereikt.</small>
-    </div>
-    <div>
-      <label>Materialen en Middelen:</label>
-      <textarea class="border w-full" bind:value={materialen} required></textarea>
-      <small>Vermelding van benodigde materialen (computers, apps, werkbladen, video's, etc.). Eventuele links of bronnen.</small>
     </div>
     <div>
       <label>Evaluatie van Leerlingen:</label>
