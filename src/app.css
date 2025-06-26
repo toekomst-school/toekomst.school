@@ -141,3 +141,40 @@ hr, .divider {
   border-top: 2px solid var(--divider);
   margin: 2rem 0;
 }
+
+@layer base {
+  :global(.rangeSlider) {
+    /* Light theme base colors */
+    --slider-accent: var(--accent);
+    --slider-accent-100: var(--warning);
+    --slider-base: #99a2a2;
+    --slider-base-100: #aebecf;
+    --slider-base-200: #b9c2c2;
+    --slider-bg: #d7dada;
+    --slider-fg: #3f3e4f;
+
+    /* Dark theme base colors */
+    --slider-dark-accent: var(--accent);
+    --slider-dark-accent-100: var(--warning);
+    --slider-dark-base: #82809f;
+    --slider-dark-base-100: #595970;
+    --slider-dark-base-200: #454454;
+    --slider-dark-bg: #3f3e4f;
+    --slider-dark-fg: #d7dada;
+
+    /* Component-specific colors with fallbacks */
+    --slider: var(--range-slider, var(--slider-bg));
+    --handle-inactive: var(--range-handle-inactive, var(--slider-base));
+    --handle: var(--range-handle, var(--slider-accent-100));
+    --handle-focus: var(--range-handle-focus, var(--slider-accent));
+    --handle-border: var(--range-handle-border, var(--handle));
+    --range-inactive: var(--range-range-inactive, var(--handle-inactive));
+    --range: var(--range-range, var(--handle-focus));
+    --range-limit: var(--range-range-limit, var(--slider-base-200));
+    --range-hover: var(--range-range-hover, var(--handle-border));
+    --range-press: var(--range-range-press, var(--handle-border));
+    --float-inactive: var(--range-float-inactive, var(--handle-inactive));
+    --float: var(--range-float, var(--handle-focus));
+    --float-text: var(--range-float-text, white);
+  }
+}

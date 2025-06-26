@@ -7,6 +7,33 @@
   import { page } from "$app/stores";
   export let data;
 //   let { children } = $props();
+
+  let breadcrumbMain = 'Home';
+  let breadcrumbSecond = '';
+  let breadcrumbPage = '';
+
+  $: currentPath = ($page && $page.url && $page.url.pathname) ? $page.url.pathname : '';
+  $: if (typeof currentPath === 'string' && currentPath.length > 0) {
+    if (currentPath.startsWith('/lessen')) {
+      breadcrumbSecond = 'Lessen';
+      if (currentPath === '/lessen') {
+        breadcrumbPage = '';
+      } else if (currentPath === '/lessen/nieuw') {
+        breadcrumbPage = 'Nieuwe Les';
+      } else if (/^\/lessen\/nieuw\/.+/.test(currentPath)) {
+        breadcrumbPage = 'Les Bewerken';
+      } else if (/^\/lessen\/[a-zA-Z0-9_-]+$/.test(currentPath)) {
+        breadcrumbPage = 'Les Details';
+      }
+    } else {
+      breadcrumbSecond = 'Building Your Application';
+      breadcrumbPage = 'Data Fetching';
+    }
+  } else {
+    breadcrumbMain = 'Home';
+    breadcrumbSecond = '';
+    breadcrumbPage = '';
+  }
 </script>
 
 {#if $page.url.pathname !== '/'}
@@ -20,12 +47,24 @@
           <Breadcrumb.Root>
             <Breadcrumb.List>
               <Breadcrumb.Item class="hidden md:block">
-                <Breadcrumb.Link href="#">Building Your Application</Breadcrumb.Link>
+                <Breadcrumb.Link href="/">{breadcrumbMain}</Breadcrumb.Link>
               </Breadcrumb.Item>
-              <Breadcrumb.Separator class="hidden md:block" />
-              <Breadcrumb.Item>
-                <Breadcrumb.Page>Data Fetching</Breadcrumb.Page>
-              </Breadcrumb.Item>
+              {#if breadcrumbSecond}
+                <Breadcrumb.Separator class="hidden md:block" />
+                <Breadcrumb.Item>
+                  {#if breadcrumbSecond === 'Lessen'}
+                    <Breadcrumb.Link href="/lessen">Lessen</Breadcrumb.Link>
+                  {:else}
+                    <Breadcrumb.Link href="#">{breadcrumbSecond}</Breadcrumb.Link>
+                  {/if}
+                </Breadcrumb.Item>
+              {/if}
+              {#if breadcrumbPage}
+                <Breadcrumb.Separator class="hidden md:block" />
+                <Breadcrumb.Item>
+                  <Breadcrumb.Page>{breadcrumbPage}</Breadcrumb.Page>
+                </Breadcrumb.Item>
+              {/if}
             </Breadcrumb.List>
           </Breadcrumb.Root>
         </header>
