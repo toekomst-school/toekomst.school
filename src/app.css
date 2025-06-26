@@ -1,0 +1,143 @@
+@import "tailwindcss";
+
+@import "tw-animate-css";
+
+/* === 🎨 Color Palette === */
+:root {
+  --color-patina-copper: #6e7c62;
+  --color-ash-grey: #b2b2a2;
+  --color-blackened-steel: #1d1f20;
+  --color-neo-teal: #3ba39b;
+  --color-digital-amber: #ffa94d;
+
+  --background: var(--color-blackened-steel);
+  --foreground: var(--color-ash-grey);
+  --accent: var(--color-neo-teal);
+  --warning: var(--color-digital-amber);
+  --divider: var(--color-patina-copper);
+
+  --radius: 0.625rem;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: 'IBM Plex Mono', 'Space Mono', monospace;
+  line-height: 1.6;
+  letter-spacing: 0.03em;
+  margin: 0;
+  padding: 0;
+}
+
+h1, h2, h3, h4, h5, h6, nav, .cta, button {
+  font-family: 'Orbitron', 'Bebas Neue', Arial, sans-serif;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+button, .cta {
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius);
+  padding: 0.75em 2em;
+  font-weight: bold;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+button:hover, .cta:hover {
+  background: var(--warning);
+  color: #1d1f20;
+}
+
+a {
+  color: var(--warning);
+  text-decoration: none;
+  transition: color 0.2s;
+}
+a:hover {
+  color: var(--accent);
+}
+
+hr, .divider {
+  border: none;
+  border-top: 2px solid var(--divider);
+  margin: 2rem 0;
+}
+
+/* === 📐 Layout System === */
+.container {
+  max-width: 1200px;
+  margin-left: auto;
+  margin-right: auto;
+  padding-left: 1.5rem;
+  padding-right: 1.5rem;
+}
+
+.grid-12 {
+  display: grid;
+  grid-template-columns: repeat(12, 1fr);
+  gap: 2rem;
+}
+
+@media (max-width: 640px) {
+  .container {
+    padding-left: 1rem;
+    padding-right: 1rem;
+  }
+  .grid-12 {
+    grid-template-columns: 1fr;
+    gap: 1rem;
+  }
+}
+
+@media (min-width: 641px) and (max-width: 1024px) {
+  .container {
+    padding-left: 1.25rem;
+    padding-right: 1.25rem;
+  }
+  .grid-12 {
+    grid-template-columns: repeat(6, 1fr);
+    gap: 1.5rem;
+  }
+}
+
+@media (min-width: 1025px) {
+  .container {
+    padding-left: 2rem;
+    padding-right: 2rem;
+  }
+  .grid-12 {
+    grid-template-columns: repeat(12, 1fr);
+    gap: 2rem;
+  }
+}
+
+/* Utility classes for spacing */
+.mt-2rem { margin-top: 2rem; }
+.mb-2rem { margin-bottom: 2rem; }
+.p-2rem { padding: 2rem; }
+
+/* Remove gradients and harsh transitions */
+* {
+  box-shadow: none !important;
+}
+
+/* Minimal accent usage */
+.accent {
+  color: var(--accent);
+}
+.warning {
+  color: var(--warning);
+}
+
+/* Borders */
+.border {
+  border: 1px solid var(--foreground);
+}
+
+/* Divider utility */
+.divider {
+  border-top: 2px solid var(--divider);
+  margin: 2rem 0;
+}
