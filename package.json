@@ -27,8 +27,10 @@
 		"@sveltejs/vite-plugin-svelte": "^5.0.0",
 		"@tailwindcss/typography": "^0.5.15",
 		"@tailwindcss/vite": "^4.0.0",
+		"@tanstack/table-core": "^8.21.3",
 		"@testing-library/jest-dom": "^6.6.3",
 		"@testing-library/svelte": "^5.2.4",
+		"@types/node": "^24.0.4",
 		"bits-ui": "^2.8.8",
 		"clsx": "^2.1.1",
 		"eslint": "^9.18.0",
@@ -52,6 +54,7 @@
 	},
 	"dependencies": {
 		"appwrite": "^18.1.1",
+		"node-appwrite": "^17.0.0",
 		"pnpm": "^10.12.3",
 		"svelte-range-slider-pips": "^4.0.5"
 	}

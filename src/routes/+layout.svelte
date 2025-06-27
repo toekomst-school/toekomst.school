@@ -5,6 +5,8 @@
   import { Separator } from "$lib/components/ui/separator/index.js";
   import * as Sidebar from "$lib/components/ui/sidebar/index.js";
   import { page } from "$app/stores";
+  import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription, SheetFooter } from '$lib/components/ui/sheet/index.js';
+  import Button from '$lib/components/ui/button/button.svelte';
   export let data;
 //   let { children } = $props();
 
@@ -12,6 +14,9 @@
   let breadcrumbSecond = '';
   let breadcrumbPage = '';
   let breadcrumbSecondHref = '';
+
+  let showRoleModal = false;
+  let selectedRole = '';
 
   $: currentPath = ($page && $page.url && $page.url.pathname) ? $page.url.pathname : '';
   $: if (typeof currentPath === 'string' && currentPath.length > 0) {
@@ -62,10 +67,55 @@
     breadcrumbSecondHref = '';
     breadcrumbPage = '';
   }
+
+  $: if (data.user && (!data.user.labels || data.user.labels.length === 0)) {
+    showRoleModal = true;
+  }
+
+  async function setRole(role: string) {
+    if (!data.user) return;
+    selectedRole = role;
+    try {
+      const res = await fetch('/api/set-label', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: data.user.$id, label: role })
+      });
+      const result = await res.json();
+      if (result.success) {
+        showRoleModal = false;
+        location.reload();
+      } else {
+        alert('Kon rol niet opslaan. Probeer opnieuw.');
+      }
+    } catch (e) {
+      alert('Kon rol niet opslaan. Probeer opnieuw.');
+      console.error(e);
+    }
+  }
 </script>
 
 {#if $page.url.pathname !== '/'}
   {#if data.user}
+    {#if showRoleModal}
+      <Sheet open={showRoleModal}>
+        <SheetContent side="top">
+          <SheetHeader>
+            <SheetTitle>Kies je rol</SheetTitle>
+            <SheetDescription>
+              Ben je een leraar of een leerling? Dit helpt ons de juiste ervaring te bieden.
+            </SheetDescription>
+          </SheetHeader>
+          <div class="flex gap-4 justify-center my-6">
+            <Button on:click={() => setRole('teacher')} variant={selectedRole === 'teacher' ? 'secondary' : 'default'}>Leraar</Button>
+            <Button on:click={() => setRole('student')} variant={selectedRole === 'student' ? 'secondary' : 'default'}>Leerling</Button>
+          </div>
+          <SheetFooter>
+            <div class="text-xs text-gray-500 text-center">Je kunt dit later aanpassen via je profiel.</div>
+          </SheetFooter>
+        </SheetContent>
+      </Sheet>
+    {/if}
     <Sidebar.Provider style="--sidebar-width: 19rem;">
       <AppSidebar />
       <Sidebar.Inset>

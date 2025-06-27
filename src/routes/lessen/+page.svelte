@@ -2,6 +2,8 @@
   import { onMount } from 'svelte';
   import { databases } from '$lib/appwrite';
   import { goto } from '$app/navigation';
+  import DataTable from '$lib/components/ui/data-table.svelte';
+  import { columns } from './columns';
 
   // Replace with your actual database and collection IDs
   const databaseId = 'lessen'; // or your actual database ID
@@ -93,15 +95,5 @@
 {:else if error && !success}
   <p class="text-red-500">{error}</p>
 {:else}
-  <div class="grid-12 mt-2rem">
-    {#each lessons as lesson}
-      <div class="border p-2rem mb-2rem cursor-pointer hover:bg-accent" on:click={() => openLesson(lesson.$id)}>
-        <h2 class="accent">{lesson.onderwerp || 'Les zonder titel'}</h2>
-        <p><b>Lesnummer:</b> {lesson.lesnummer}</p>
-        <p><b>Doelgroep:</b> {lesson.doelgroep}</p>
-        <p><b>Duur:</b> {lesson.duur}</p>
-        <p>{lesson.waarom}</p>
-      </div>
-    {/each}
-  </div>
+  <DataTable data={lessons} columns={columns} on:rowClick={e => openLesson(e.detail.$id)} />
 {/if} 

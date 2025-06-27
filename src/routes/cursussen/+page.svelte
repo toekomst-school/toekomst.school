@@ -2,6 +2,8 @@
   import { onMount } from 'svelte';
   import { databases } from '$lib/appwrite';
   import { goto } from '$app/navigation';
+  import DataTable from '$lib/components/ui/data-table.svelte';
+  import { columns } from './columns';
 
   const databaseId = 'lessen';
   const collectionId = 'cursus';
@@ -71,31 +73,7 @@
 {:else if error}
   <p class="text-red-500">{error}</p>
 {:else}
-  <div class="grid gap-4">
-    {#each courses as course}
-      <div class="border p-2rem flex flex-col md:flex-row md:items-center md:justify-between">
-        <div>
-          <a href={`/cursussen/${course.$id}`} class="font-bold text-lg accent">{course.name}</a>
-          {#if course.description}
-            <div class="text-sm text-gray-500">{course.description}</div>
-          {/if}
-          {#if course.image}
-            <img src={course.image} alt="Cursus afbeelding" class="h-16 w-16 object-cover rounded mb-2" />
-          {/if}
-          {#if course.price}
-            <div class="text-sm text-green-700 font-bold">€ {Number(course.price).toFixed(2)}</div>
-          {/if}
-        </div>
-        <button class="cta bg-red-600 hover:bg-red-700 mt-2 md:mt-0" on:click={() => removeCourse(course.$id)} disabled={removing === course.$id}>
-          {removing === course.$id ? 'Verwijderen...' : 'Verwijder'}
-        </button>
-        <a href={`/cursussen/${course.$id}?edit=1`} class="cta bg-blue-600 hover:bg-blue-700 mt-2 md:mt-0 ml-2">Bewerk</a>
-      </div>
-    {/each}
-    {#if courses.length === 0}
-      <div class="text-gray-500">Nog geen cursussen.</div>
-    {/if}
-  </div>
+  <DataTable data={courses} columns={columns} on:rowClick={e => goto(`/cursussen/${e.detail.$id}`)} />
 {/if}
 
 <div class="border p-2rem mb-2rem mt-8">
