@@ -56,6 +56,14 @@
       breadcrumbSecond = 'Remote';
       breadcrumbSecondHref = '/remote';
       breadcrumbPage = '';
+    } else if (currentPath.startsWith('/tabcontrol')) {
+      breadcrumbSecond = 'Tabcontrol';
+      breadcrumbSecondHref = '/tabcontrol';
+      breadcrumbPage = '';
+    } else if (currentPath.startsWith('/game')) {
+      breadcrumbSecond = 'Game';
+      breadcrumbSecondHref = '/game';
+      breadcrumbPage = '';
     } else {
       breadcrumbSecond = 'Overzicht';
       breadcrumbSecondHref = '/';

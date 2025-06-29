@@ -7,7 +7,8 @@
         { title: "planning", url: "/planning" },
         { title: "cursussen", url: "/cursussen" },
         { title: "lessen", url: "/lessen" },
-        { title: "remote", url: "/remote" },
+        { title: "tabcontrol", url: "/tabcontrol" },
+        { title: "game", url: "/game" },
       ],
     };
   </script>

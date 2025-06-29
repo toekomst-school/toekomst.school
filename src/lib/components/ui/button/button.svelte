@@ -40,9 +40,6 @@
 </script>
 
 <script lang="ts">
-	import { createEventDispatcher } from 'svelte';
-	const dispatch = createEventDispatcher();
-
 	let {
 		class: className,
 		variant = "default",
@@ -65,7 +62,6 @@
 		aria-disabled={disabled}
 		role={disabled ? "link" : undefined}
 		tabindex={disabled ? -1 : undefined}
-		on:click={(e) => dispatch('click', e)}
 		{...restProps}
 	>
 		{@render children?.()}
@@ -77,7 +73,6 @@
 		class={cn(buttonVariants({ variant, size }), className)}
 		{type}
 		{disabled}
-		on:click={(e) => dispatch('click', e)}
 		{...restProps}
 	>
 		{@render children?.()}
