@@ -178,3 +178,21 @@ hr, .divider {
     --float-text: var(--range-float-text, white);
   }
 }
+
+/* Light theme overrides */
+.light {
+  --background: #f7f7f7;
+  --foreground: #222;
+  --accent: #3ba39b;
+  --warning: #ffa94d;
+  --divider: #b2b2a2;
+}
+
+body.light {
+  background: var(--background);
+  color: var(--foreground);
+}
+
+.light .logo-invert-light {
+  filter: invert(1) hue-rotate(180deg) saturate(1.2) contrast(1.1);
+}

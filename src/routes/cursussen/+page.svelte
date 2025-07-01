@@ -17,6 +17,9 @@
   let removing = '';
   let image = '';
   let price = '';
+  let filterName = '';
+  let filterDoelgroep = '';
+  let search = '';
 
   async function fetchCourses() {
     loading = true;
@@ -64,16 +67,31 @@
       removing = '';
     }
   }
+
+  $: filteredCourses = courses.filter(course => {
+    const matchesName = !filterName || (course.name || '').toLowerCase().includes(filterName.toLowerCase());
+    const matchesDoelgroep = !filterDoelgroep || (course.doelgroep || '').toLowerCase().includes(filterDoelgroep.toLowerCase());
+    const matchesSearch = !search ||
+      (course.name || '').toLowerCase().includes(search.toLowerCase()) ||
+      (course.description || '').toLowerCase().includes(search.toLowerCase());
+    return matchesName && matchesDoelgroep && matchesSearch;
+  });
 </script>
 
 <h1>Cursussen</h1>
+
+<div class="flex flex-wrap gap-2 mb-4">
+  <input class="border p-2 rounded" placeholder="Filter op cursusnaam" bind:value={filterName} />
+  <input class="border p-2 rounded" placeholder="Filter op doelgroep" bind:value={filterDoelgroep} />
+  <input class="border p-2 rounded" placeholder="Zoeken..." bind:value={search} />
+</div>
 
 {#if loading}
   <p>Bezig met laden...</p>
 {:else if error}
   <p class="text-red-500">{error}</p>
 {:else}
-  <DataTable data={courses} columns={columns} on:rowClick={e => goto(`/cursussen/${e.detail.$id}`)} />
+  <DataTable data={filteredCourses} columns={columns} on:rowClick={e => goto(`/cursussen/${e.detail.$id}`)} />
 {/if}
 
 <div class="border p-2rem mb-2rem mt-8">

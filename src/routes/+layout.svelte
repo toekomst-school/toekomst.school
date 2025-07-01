@@ -40,6 +40,22 @@
       } else if (/^\/cursussen\/[a-zA-Z0-9_-]+$/.test(currentPath)) {
         breadcrumbPage = 'Cursus Details';
       }
+    } else if (currentPath.startsWith('/scholen')) {
+      breadcrumbSecond = 'Scholen';
+      breadcrumbSecondHref = '/scholen';
+      if (currentPath === '/scholen') {
+        breadcrumbPage = '';
+      } else if (/^\/scholen\/[a-zA-Z0-9_-]+(\/)?$/.test(currentPath)) {
+        breadcrumbPage = 'School Details';
+      }
+    } else if (currentPath.startsWith('/team')) {
+      breadcrumbSecond = 'Team';
+      breadcrumbSecondHref = '/team';
+      if (currentPath === '/team') {
+        breadcrumbPage = '';
+      } else if (/^\/team\/[a-zA-Z0-9_-]+(\/)?$/.test(currentPath)) {
+        breadcrumbPage = 'Team Details';
+      }
     } else if (currentPath.startsWith('/planning')) {
       breadcrumbSecond = 'Planning';
       breadcrumbSecondHref = '/planning';
