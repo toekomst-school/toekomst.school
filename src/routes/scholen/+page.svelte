@@ -6,7 +6,8 @@
   import { goto } from '$app/navigation';
   import SvelteSelect from 'svelte-select';
   import DataTable from '$lib/components/ui/data-table.svelte';
-  import Switch from 'shadcn-svelte';
+  import { Switch } from '$lib/components/ui/switch/index.js';
+  import { Pencil } from '@lucide/svelte';
 
   // Appwrite setup (assume endpoint/project are already set globally)
   const databases = new Databases(appwrite);
@@ -48,6 +49,9 @@
   let showModal = false;
   let editSchool = null;
 
+  // Add a filter state for klant
+  let onlyKlant = false;
+
   // Fetch unique values for dropdowns
   async function fetchDropdowns() {
     // Only fetch plaatsnamen dynamically
@@ -75,6 +79,7 @@
         Query.search('HUISNUMMER', search)
       ]));
     }
+    if (onlyKlant) queries.push(Query.equal('KLANT', true));
     try {
       const res = await databases.listDocuments(DB_ID, COLLECTION_ID, queries);
       scholen = res.documents;
@@ -93,7 +98,7 @@
   });
 
   // React to filter/page changes
-  $: fetchScholen(), [page, filterProvincie, filterPlaatsnaam, search];
+  $: fetchScholen(), [page, filterProvincie, filterPlaatsnaam, search, onlyKlant];
 
   function openAdd() {
     editSchool = null;
@@ -129,50 +134,19 @@
   function nextPage() { if (page < totalPages()) page += 1; }
 
   const columns = [
-    {
-      id: 'NAAM',
-      header: 'Naam',
-      accessorKey: 'NAAM',
-      cell: info => info.getValue(),
-      width: '200px'
-    },
-    {
-      id: 'PLAATSNAAM',
-      header: 'Plaatsnaam',
-      accessorKey: 'PLAATSNAAM',
-      cell: info => info.getValue()
-    },
-    {
-      id: 'TELEFOONNUMMER',
-      header: 'Telefoonnummer',
-      accessorKey: 'TELEFOONNUMMER',
-      cell: info => info.getValue()
-    },
-    {
-      id: 'INTERNETADRES',
-      header: 'Internetadres',
-      accessorKey: 'INTERNETADRES',
-      cell: info => info.getValue()
-    },
-    {
-      id: 'klant',
-      header: 'Is klant',
-      accessorKey: 'klant',
-      cell: () => '', // handled by slot
-      enableSorting: false,
-      enableHiding: false,
-    },
-    {
-      id: 'actions',
-      header: 'Bewerken',
-      cell: () => '', // Placeholder, will be replaced by slot
-      enableSorting: false,
-      enableHiding: false,
-    }
+    { id: 'NAAM', header: 'Naam', accessorKey: 'NAAM', cell: info => info.getValue(), width: '200px' },
+    { id: 'PLAATSNAAM', header: 'Plaatsnaam', accessorKey: 'PLAATSNAAM', cell: info => info.getValue() },
+    { id: 'TELEFOONNUMMER', header: 'Telefoonnummer', accessorKey: 'TELEFOONNUMMER', cell: info => info.getValue() },
+    { id: 'INTERNETADRES', header: 'Internetadres', accessorKey: 'INTERNETADRES', cell: info => info.getValue() },
+    { id: 'actions', header: 'Bewerken', cell: () => '', enableSorting: false, enableHiding: false }
   ];
 </script>
 
 <div class="filters">
+  <div class="filter-switch">
+    <Switch bind:checked={onlyKlant} aria-label="Toon alleen klanten" />
+    <span class="filter-switch-label">Toon alleen klanten</span>
+  </div>
   <SvelteSelect
     items={provincies}
     bind:value={filterProvincie}
@@ -204,18 +178,15 @@
       columns={columns}
       on:rowClick={e => goto(`/scholen/${e.detail.$id}`)}
     >
-      <svelte:fragment slot="cell-klant" let:row>
-        <Switch
-          checked={row.klant}
-          on:change={async (e) => {
-            await databases.updateDocument('scholen', 'school', row.$id, { klant: e.detail });
-            row.klant = e.detail;
-          }}
-          aria-label="Is klant"
-        />
-      </svelte:fragment>
       <svelte:fragment slot="cell-actions" let:row>
-        <button on:click|stopPropagation={() => openEdit(row)}>Bewerken</button>
+        <button
+          on:click|stopPropagation={() => goto(`/scholen/${row.$id}/bewerken`)}
+          aria-label="Bewerk school"
+          title="Bewerk school"
+          class="icon-btn"
+        >
+          <Pencil size={18} />
+        </button>
       </svelte:fragment>
     </DataTable>
   </div>
@@ -283,5 +254,27 @@
 }
 .scholen-table-wrapper table {
   width: 100%;
+}
+.filter-switch {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.filter-switch-label {
+  font-size: 1rem;
+  color: var(--foreground);
+}
+.icon-btn {
+  background: none;
+  border: none;
+  color: var(--accent);
+  padding: 0.2em 0.5em;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.icon-btn:hover {
+  background: var(--divider);
+  color: var(--warning);
 }
 </style>

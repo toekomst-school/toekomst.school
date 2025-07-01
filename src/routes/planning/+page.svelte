@@ -13,6 +13,9 @@ declare module '@event-calendar/core';
     import { page } from '$app/stores';
     import WorkshopForm from '$lib/components/WorkshopForm.svelte';
     import {Calendar, TimeGrid, DayGrid} from '@event-calendar/core';
+    import { Client, Databases, Query } from 'appwrite';
+    import WorkshopView from '$lib/components/WorkshopView.svelte';
+    import { appwrite } from '$lib/appwrite';
 
     // Calculate Monday of this week
     const now = new Date();
@@ -75,12 +78,8 @@ declare module '@event-calendar/core';
 
     // Remove static lessonOptions, replace with dynamic
     /** @type {{ value: string, label: string }[]} */
-    let lessonOptions = [];
-    const schoolOptions = [
-      { value: 'obs-toekomst', label: 'OBS Toekomst' },
-      { value: 'bs-regenboog', label: 'Basisschool De Regenboog' },
-      { value: 'sg-jan-van-egmond', label: 'SG Jan van Egmond' },
-    ];
+    let lessonOptions: { value: string, label: string }[] = [];
+    let schoolOptions: { value: string, label: string }[] = [];
     /** @type {{ value: string, label: string }[]} */
     let teacherOptions: { value: string, label: string }[] = [];
     const groupOptions = [
@@ -102,8 +101,7 @@ declare module '@event-calendar/core';
 
     // Modal state for editing events
     let showEditModal = false;
-    /** @type {any} */
-    let editEvent = null;
+    let editEvent: any = null;
     let description = '';
     /** @type {string} */
     let editEventStart = '';
@@ -114,7 +112,7 @@ declare module '@event-calendar/core';
 
     let calendarKey = 0;
     /** @type {any} */
-    let calendarRef;
+    let calendarRef: any;
 
     // Modal state for new fields
     let selectedLesson = '';
@@ -141,6 +139,10 @@ declare module '@event-calendar/core';
 
     let groupExtension = '';
 
+    // For fetching schools
+    const SCHOOL_DB_ID = 'scholen';
+    const SCHOOL_COLLECTION_ID = 'school';
+
     /** @type {any} */
     const options = writable({
         view: 'dayGridMonth',
@@ -158,9 +160,12 @@ declare module '@event-calendar/core';
 
     // Filtered event lists
     /** @type {import('svelte/store').Readable<any[]>} */
-    const myEvents = derived(options, /** @param {any} $options */ $options => $options.events.filter(ev => ev.teacher === currentUserId));
+    const myEvents = derived(options, ($options: any) => ($options.events as any[]).filter(ev => ev.teacher === currentUserId));
     /** @type {import('svelte/store').Readable<any[]>} */
-    const availableEvents = derived(options, /** @param {any} $options */ $options => $options.events.filter(ev => !ev.teacher || ev.status === 'pending'));
+    const availableEvents = derived(options, ($options: any) => ($options.events as any[]).filter(ev => !ev.teacher || ev.status === 'pending'));
+
+    let showViewModal = false;
+    let viewEvent = null;
 
     onMount(async () => {
       try {
@@ -178,6 +183,13 @@ declare module '@event-calendar/core';
           label: teacher.name || teacher.email || 'Vakdocent zonder naam'
         }));
 
+        // Fetch only client schools (KLANT = true) from correct DB/collection
+        const schoolsRes = await databases.listDocuments(SCHOOL_DB_ID, SCHOOL_COLLECTION_ID, [Query.equal('KLANT', true), Query.limit(1000)]);
+        schoolOptions = schoolsRes.documents.map(school => ({
+          value: school.$id,
+          label: school.NAAM || school.$id
+        }));
+
         const user = await account.get();
         currentUserId = user.$id;
         currentUserLabels = user.labels || [];
@@ -190,7 +202,20 @@ declare module '@event-calendar/core';
           events: res.documents.map(doc => ({
             ...doc,
             id: doc.$id,
-            // Optionally: convert date strings, set color, etc.
+            extendedProps: {
+              lesson: doc.lesson,
+              school: doc.school,
+              teacher: doc.teacher,
+              group: doc.group,
+              groupExtension: doc.groupExtension,
+              materialen: doc.materialen,
+              status: doc.status,
+              description: doc.description,
+              length: doc.length,
+              color: doc.color,
+              start: doc.start,
+              end: doc.end
+            }
           }))
         }));
       } catch (e) {
@@ -198,7 +223,7 @@ declare module '@event-calendar/core';
         currentUserLabels = [];
         isAdmin = false;
         isVakdocent = false;
-        console.error('Failed to fetch planning events, user, lessons, or vakdocenten:', e);
+        console.error('Failed to fetch planning events, user, lessons, vakdocenten, or schools:', e);
       }
     });
 
@@ -365,7 +390,61 @@ declare module '@event-calendar/core';
      * @property {object} info.view - The current View object
      */
     function handleEventClick(info) {
-        openEditModal(info.event);
+        openViewModal(info.event);
+    }
+
+    async function openViewModal(event) {
+        const props = event.extendedProps || event;
+        console.log('openViewModal: event', event);
+        console.log('openViewModal: props', props);
+        const lessonOpt = lessonOptions.find(opt => opt.value === props.lesson);
+        const schoolOpt = schoolOptions.find(opt => opt.value === props.school);
+        const teacherOpt = teacherOptions.find(opt => opt.value === props.teacher);
+        console.log('Resolved lessonOpt:', lessonOpt);
+        console.log('Resolved schoolOpt:', schoolOpt);
+        console.log('Resolved teacherOpt:', teacherOpt);
+        let schoolData = null;
+        if (props.school) {
+            try {
+                const databases = new Databases(appwrite);
+                schoolData = await databases.getDocument('scholen', 'school', props.school);
+            } catch (e) {
+                console.error('Failed to fetch school data for view modal:', e);
+            }
+        }
+        viewEvent = {
+            ...props,
+            lessonName: lessonOpt ? lessonOpt.label : '-',
+            lessonId: props.lesson,
+            schoolName: schoolOpt ? schoolOpt.label : '-',
+            schoolId: props.school,
+            teacherName: teacherOpt ? teacherOpt.label : '-',
+            teacherId: props.teacher,
+            schoolData
+        };
+        console.log('viewEvent for modal:', viewEvent);
+        showViewModal = true;
+    }
+    function closeViewModal() {
+        showViewModal = false;
+        viewEvent = null;
+    }
+
+    function handleEditFromView() {
+        const currentViewEvent = viewEvent;
+        if (!currentViewEvent) {
+            console.warn('handleEditFromView: viewEvent is null or undefined');
+            return;
+        }
+        closeViewModal();
+        // Find the event in the current events list by id (viewEvent.id or viewEvent.$id)
+        let eventId = currentViewEvent.id || currentViewEvent.$id;
+        let event = null;
+        // Try to find in $myEvents and $availableEvents
+        if ($myEvents) event = $myEvents.find(ev => ev.id === eventId || ev.$id === eventId);
+        if (!event && $availableEvents) event = $availableEvents.find(ev => ev.id === eventId || ev.$id === eventId);
+        if (!event) event = currentViewEvent; // fallback
+        openEditModal(event);
     }
 </script>
 
@@ -386,7 +465,7 @@ declare module '@event-calendar/core';
     <div class="event-list">
         <h3>Mijn geplande events</h3>
         {#each $myEvents as event (event.id)}
-            <div class="event-row">
+            <div class="event-row" on:click={() => openViewModal(event)} style="cursor:pointer;">
                 <span>{event.title} ({event.start.slice(0, 16)})</span>
             </div>
         {/each}
@@ -455,6 +534,13 @@ declare module '@event-calendar/core';
         on:submit={submitCreateEvent}
         on:cancel={closeCreateModal}
     />
+</div>
+{/if}
+
+{#if showViewModal}
+<div class="modal-backdrop" on:click={closeViewModal}></div>
+<div class="modal" on:click|stopPropagation>
+    <WorkshopView event={viewEvent} on:close={closeViewModal} on:edit={handleEditFromView} />
 </div>
 {/if}
 

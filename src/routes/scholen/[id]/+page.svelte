@@ -5,7 +5,7 @@
   import { appwrite } from '$lib/appwrite';
   import { get } from 'svelte/store';
   import { goto } from '$app/navigation';
-  import { Map, MapPin, Clipboard } from '@lucide/svelte';
+  import { Map, MapPin, Clipboard, Pencil } from '@lucide/svelte';
 
   const DB_ID = 'scholen';
   const COLLECTION_ID = 'school';
@@ -33,6 +33,10 @@
       setTimeout(() => copied = false, 1200);
     });
   }
+
+  function editSchool() {
+    goto(`/scholen/${school.$id}/bewerken`);
+  }
 </script>
 
 {#if loading}
@@ -41,6 +45,9 @@
   <div class="school-view-card"><p>School niet gevonden.</p></div>
 {:else}
   <div class="school-view-card">
+    <button class="edit-btn" on:click={editSchool} aria-label="Bewerk school" title="Bewerk school">
+      <Pencil size={20} />
+    </button>
     <h1>{school.NAAM}</h1>
     <div class="school-subtitle">{school.DENOMINATIE}</div>
     <div class="school-info-grid">
@@ -75,8 +82,8 @@
         </button>
       </div>
       <div><span>Telefoonnummer:</span> {school.TELEFOONNUMMER}</div>
-      <div><span>Internetadres:</span> <a href={school.INTERNETADRES} target="_blank">{school.INTERNETADRES}</a></div>
-      <div><span>Is klant:</span> {school.klant ? 'Ja' : 'Nee'}</div>
+      <div><span>Internetadres:</span> <a href={(school.INTERNETADRES?.startsWith('http') ? school.INTERNETADRES : `https://${school.INTERNETADRES}`)} target="_blank">{school.INTERNETADRES}</a></div>
+      <div><span>Is klant:</span> {school.KLANT ? 'Ja' : 'Nee'}</div>
       <div><span>Onderwijsstructuur:</span> {school.ONDERWIJSSTRUCTUUR}</div>
       <details class="school-details-tab">
         <summary>Groepen/Klassen</summary>
@@ -200,5 +207,22 @@
 }
 .school-details-tab div {
   margin-bottom: 0.5rem;
+}
+.edit-btn {
+  position: absolute;
+  right: 2rem;
+  top: 1.5rem;
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius);
+  padding: 0.5em 1.5em;
+  font-weight: bold;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.edit-btn:hover {
+  background: var(--warning);
+  color: var(--foreground);
 }
 </style> 

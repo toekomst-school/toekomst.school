@@ -19,7 +19,7 @@
     INTERNETADRES: '',
     VAKANTIEREGIO: '',
     ONDERWIJSSTRUCTUUR: '',
-    klant: false
+    KLANT: false
   };
 
   onMount(() => {
@@ -101,7 +101,7 @@
       <input bind:value={form.ONDERWIJSSTRUCTUUR} required />
     </label>
     <label style="grid-column: 1 / -1; display: flex; align-items: center; gap: 0.5rem; margin-top: 1rem;">
-      <input type="checkbox" bind:checked={form.klant} />
+      <input type="checkbox" bind:checked={form.KLANT} />
       Is klant?
     </label>
   </div>
@@ -126,5 +126,35 @@
   display: flex;
   gap: 1rem;
   justify-content: flex-end;
+}
+.school-form input,
+.school-form select,
+.school-form textarea {
+  border: 1.5px solid var(--divider, #b2b2a2);
+  border-radius: 6px;
+  background: var(--background, #fff);
+  padding: 0.5em 0.75em;
+  font-size: 1rem;
+  color: var(--foreground, #222);
+  margin-top: 0.2em;
+  margin-bottom: 0.5em;
+  box-sizing: border-box;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.school-form input:focus,
+.school-form select:focus,
+.school-form textarea:focus {
+  outline: none;
+  border-color: var(--accent, #3ba39b);
+  box-shadow: 0 0 0 2px var(--accent, #3ba39b33);
+}
+.school-form input[type="checkbox"] {
+  width: 1.1em;
+  height: 1.1em;
+  margin-right: 0.5em;
+  accent-color: var(--accent, #3ba39b);
+  box-shadow: none;
+  border-radius: 4px;
+  vertical-align: middle;
 }
 </style> 
