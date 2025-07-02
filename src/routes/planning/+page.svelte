@@ -6,7 +6,7 @@ declare module '@event-calendar/core';
     // import Interaction from '@event-calendar/interaction';
     // @ts-ignore
     import List from '@event-calendar/list';
-    import { writable } from 'svelte/store';
+    import { writable, type Writable } from 'svelte/store';
     import { account, databases } from '$lib/appwrite';
     import { onMount } from 'svelte';
     import { derived } from 'svelte/store';
@@ -100,51 +100,78 @@ declare module '@event-calendar/core';
     ];
 
     // Modal state for editing events
-    let showEditModal = false;
+    let showEditModal: boolean = false;
     let editEvent: any = null;
-    let description = '';
-    /** @type {string} */
-    let editEventStart = '';
-    /** @type {string} */
-    let editEventEnd = '';
+    let description: string = '';
+    let editEventStart: string = '';
+    let editEventEnd: string = '';
 
-    let showCreateModal = false;
+    let showCreateModal: boolean = false;
 
-    let calendarKey = 0;
-    /** @type {any} */
+    let calendarKey: number = 0;
     let calendarRef: any;
 
     // Modal state for new fields
-    let selectedLesson = '';
-    let selectedSchool = '';
-    let selectedGroup = '';
-    let selectedTeacher = '';
-    let lessonLength = 45;
-    let materialen = '';
-    let status = 'pending'; // default: 'pending' (In afwachting)
+    import type { Option } from '$lib/components/WorkshopForm.svelte';
+    let selectedLesson: Option | null = null;
+    let selectedSchool: Option | null = null;
+    let selectedGroup: string = '';
+    let selectedTeacher: Option | null = null;
+    let lessonLength: number = 45;
+    let materialen: string = '';
+    let status: string = 'pending'; // default: 'pending' (In afwachting)
     const statusOptions = [
       { value: 'pending', label: 'In afwachting' },
       { value: 'confirmed', label: 'Bevestigd' },
       { value: 'declined', label: 'Geweigerd' },
     ];
 
-    let currentUserId = '';
-    let currentUserLabels = [];
-    let isAdmin = false;
-    let isVakdocent = false;
-    let currentTab = 'beschikbaar'; // 'beschikbaar' or 'mijn-planning'
+    let currentUserId: string = '';
+    let currentUserLabels: string[] = [];
+    let isAdmin: boolean = false;
+    let isVakdocent: boolean = false;
+    let currentTab: string = 'beschikbaar'; // 'beschikbaar' or 'mijn-planning'
 
     const databaseId = 'lessen';
     const collectionId = 'planning';
 
-    let groupExtension = '';
+    let groupExtension: string = '';
 
     // For fetching schools
     const SCHOOL_DB_ID = 'scholen';
     const SCHOOL_COLLECTION_ID = 'school';
 
-    /** @type {any} */
-    const options = writable({
+    interface CalendarEvent {
+      id: string;
+      title?: string;
+      start: string;
+      end: string;
+      color?: string;
+      status?: string;
+      teacher?: string;
+      lesson?: string;
+      school?: string;
+      group?: string;
+      groupExtension?: string;
+      materialen?: string;
+      description?: string;
+      length?: number;
+      extendedProps?: any;
+    }
+
+    interface CalendarOptions {
+      view: string;
+      events: CalendarEvent[];
+      locale: string;
+      firstDay: number;
+      editable: boolean;
+      headerToolbar: any;
+      eventClick: (info: any) => void;
+      slotMinTime: string;
+      slotMaxTime: string;
+    }
+
+    const options: Writable<CalendarOptions> = writable({
         view: 'dayGridMonth',
         events: [], // Start empty, will be filled from Appwrite
         locale: 'nl',
@@ -155,17 +182,20 @@ declare module '@event-calendar/core';
             center: 'title',
             end: 'dayGridMonth,timeGridWeek,timeGridDay,listWeek'
         },
-        eventClick: handleEventClick
+        eventClick: handleEventClick,
+        // Restrict visible hours in timeGrid views
+        slotMinTime: '07:00:00',
+        slotMaxTime: '22:00:00',
+        // slotLabelInterval: 30,
     });
 
     // Filtered event lists
-    /** @type {import('svelte/store').Readable<any[]>} */
-    const myEvents = derived(options, ($options: any) => ($options.events as any[]).filter(ev => ev.teacher === currentUserId));
-    /** @type {import('svelte/store').Readable<any[]>} */
-    const availableEvents = derived(options, ($options: any) => ($options.events as any[]).filter(ev => !ev.teacher || ev.status === 'pending'));
+    import type { Readable } from 'svelte/store';
+    const myEvents: Readable<any[]> = derived(options, ($options: any) => ($options.events as any[]).filter((ev: any) => ev.teacher === currentUserId));
+    const availableEvents: Readable<any[]> = derived(options, ($options: any) => ($options.events as any[]).filter((ev: any) => !ev.teacher || ev.status === 'pending'));
 
-    let showViewModal = false;
-    let viewEvent = null;
+    let showViewModal: boolean = false;
+    let viewEvent: any = null;
 
     onMount(async () => {
       try {
@@ -200,8 +230,20 @@ declare module '@event-calendar/core';
         options.update(current => ({
           ...current,
           events: res.documents.map(doc => ({
-            ...doc,
             id: doc.$id,
+            title: doc.title || '',
+            start: String(doc.start),
+            end: String(doc.end),
+            color: doc.color || '',
+            status: doc.status || '',
+            teacher: doc.teacher ? String(doc.teacher) : '',
+            lesson: doc.lesson ? String(doc.lesson) : '',
+            school: doc.school ? String(doc.school) : '',
+            group: doc.group || '',
+            groupExtension: doc.groupExtension || '',
+            materialen: doc.materialen || '',
+            description: doc.description || '',
+            length: doc.length || 45,
             extendedProps: {
               lesson: doc.lesson,
               school: doc.school,
@@ -230,7 +272,7 @@ declare module '@event-calendar/core';
     /**
      * @param {any} event
      */
-    async function claimEvent(event) {
+    async function claimEvent(event: any) {
         if (!currentUserId) return;
         const updatedEvent = { ...event, teacher: currentUserId, status: 'confirmed', color: 'var(--accent)' };
         try {
@@ -251,7 +293,7 @@ declare module '@event-calendar/core';
     /**
      * @param {any} event
      */
-    function openEditModal(event) {
+    function openEditModal(event: any) {
         editEvent = event;
         description = event.description || '';
         let startStr = typeof event.start === 'string' ? event.start : event.start.toISOString();
@@ -271,11 +313,11 @@ declare module '@event-calendar/core';
         editEvent = null;
         description = '';
         editEventStart = '';
-        selectedLesson = '';
-        selectedSchool = '';
+        selectedLesson = null;
+        selectedSchool = null;
         selectedGroup = '';
         groupExtension = '';
-        selectedTeacher = '';
+        selectedTeacher = null;
         lessonLength = 45;
         materialen = '';
         status = 'pending';
@@ -286,7 +328,7 @@ declare module '@event-calendar/core';
         const end = new Date(new Date(editEventStart).getTime() + totalMinutes * 60000);
         return end.toLocaleString('nl-NL', { hour: '2-digit', minute: '2-digit' });
     }
-    async function submitEditEvent(e) {
+    async function submitEditEvent(e: any) {
         if (e && e.preventDefault) e.preventDefault();
         if (!editEvent) return;
         const totalMinutes = Number(lessonLength);
@@ -296,15 +338,15 @@ declare module '@event-calendar/core';
             description,
             start: new Date(editEventStart).toISOString(),
             end,
-            lesson: selectedLesson ? selectedLesson.value : '',
-            school: selectedSchool ? selectedSchool.value : '',
+            lesson: selectedLesson ? String(selectedLesson.value) : '',
+            school: selectedSchool ? String(selectedSchool.value) : '',
             group: groupExtension ? `${selectedGroup} - ${groupExtension}` : selectedGroup,
             groupExtension,
-            teacher: selectedTeacher ? selectedTeacher.value : '',
+            teacher: selectedTeacher ? String(selectedTeacher.value) : '',
             length: lessonLength,
             materialen,
-            status,
-            color: status === 'pending' || !selectedTeacher ? 'var(--warning)' : 'var(--accent)',
+            status: selectedTeacher && selectedTeacher.value ? 'confirmed' : 'pending',
+            color: selectedTeacher && selectedTeacher.value ? 'var(--accent)' : 'var(--warning)',
         };
         try {
             await databases.updateDocument(databaseId, collectionId, updatedEvent.id, updatedEvent);
@@ -343,16 +385,16 @@ declare module '@event-calendar/core';
         editEvent = null;
         editEventStart = '';
         editEventEnd = '';
-        selectedLesson = '';
-        selectedSchool = '';
+        selectedLesson = null;
+        selectedSchool = null;
         selectedGroup = '';
-        selectedTeacher = '';
+        selectedTeacher = null;
         lessonLength = 45;
         materialen = '';
         status = 'pending';
     }
 
-    async function submitCreateEvent(e) {
+    async function submitCreateEvent(e: any) {
         if (e && e.preventDefault) e.preventDefault();
         const totalMinutes = Number(lessonLength);
         const end = new Date(new Date(editEventStart).getTime() + totalMinutes * 60000).toISOString();
@@ -360,15 +402,15 @@ declare module '@event-calendar/core';
             description,
             start: new Date(editEventStart).toISOString(),
             end,
-            lesson: selectedLesson ? selectedLesson.value : '',
-            school: selectedSchool ? selectedSchool.value : '',
+            lesson: selectedLesson ? String(selectedLesson.value) : '',
+            school: selectedSchool ? String(selectedSchool.value) : '',
             group: groupExtension ? `${selectedGroup} - ${groupExtension}` : selectedGroup,
             groupExtension,
-            teacher: selectedTeacher ? selectedTeacher.value : '',
+            teacher: selectedTeacher ? String(selectedTeacher.value) : '',
             length: lessonLength,
             materialen,
-            status,
-            color: status === 'pending' || !selectedTeacher ? 'var(--warning)' : 'var(--accent)',
+            status: selectedTeacher && selectedTeacher.value ? 'confirmed' : 'pending',
+            color: selectedTeacher && selectedTeacher.value ? 'var(--accent)' : 'var(--warning)',
         };
         try {
             const doc = await databases.createDocument(databaseId, collectionId, 'unique()', newEvent);
@@ -389,11 +431,11 @@ declare module '@event-calendar/core';
      * @property {object} info.jsEvent - The native JS event
      * @property {object} info.view - The current View object
      */
-    function handleEventClick(info) {
+    function handleEventClick(info: any) {
         openViewModal(info.event);
     }
 
-    async function openViewModal(event) {
+    async function openViewModal(event: any) {
         const props = event.extendedProps || event;
         console.log('openViewModal: event', event);
         console.log('openViewModal: props', props);
@@ -483,11 +525,11 @@ declare module '@event-calendar/core';
         statusOptions={statusOptions}
         isEdit={true}
         initialValues={{
-            lesson: selectedLesson,
-            school: selectedSchool,
+            lesson: selectedLesson ? String(selectedLesson.value) : '',
+            school: selectedSchool ? String(selectedSchool.value) : '',
             group: selectedGroup,
             groupExtension,
-            teacher: selectedTeacher,
+            teacher: selectedTeacher ? String(selectedTeacher.value) : '',
             length: lessonLength,
             materialen,
             status,

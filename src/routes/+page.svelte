@@ -10,9 +10,8 @@
   }
 </script>
 
-<LessonSelect on:select={handleLessonSelect} />
-
+<span class="h-20 block"></span>
 <iframe
   src="https://bot.toekomst.school/homepage-uo9d6xo"
-  style="border: none; width: 100%; height: 100vh"
+  style="border: none; width: 100%; height: 90vh; "
 ></iframe>

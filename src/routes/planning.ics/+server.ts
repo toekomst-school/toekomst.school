@@ -1,11 +1,15 @@
 import type { RequestHandler } from '@sveltejs/kit';
-import { Databases } from 'appwrite';
-import { appwrite } from '$lib/appwrite';
+import { Client, Databases } from 'node-appwrite';
 import ical from 'ical-generator';
 
-export const GET: RequestHandler = async ({ url }) => {
-  const databases = new Databases(appwrite);
-  // Adjust these IDs as needed
+export const GET: RequestHandler = async () => {
+  const client = new Client();
+  client
+    .setEndpoint(process.env.APPWRITE_ENDPOINT!)
+    .setProject(process.env.APPWRITE_PROJECT!)
+    .setKey(process.env.APPWRITE_API_KEY!);
+
+  const databases = new Databases(client);
   const databaseId = 'lessen';
   const collectionId = 'planning';
 

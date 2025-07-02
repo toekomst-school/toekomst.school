@@ -120,8 +120,8 @@
     <SvelteSelect
       items={teacherOptions}
       bind:value={selectedTeacher}
-      placeholder="Kies een vakdocent..."
-      required
+      placeholder="Kies een vakdocent (optioneel)"
+      clearable={true}
     />
   </label>
   <label>
