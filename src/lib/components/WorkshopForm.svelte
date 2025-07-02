@@ -7,7 +7,6 @@
     lesson?: string;
     school?: string;
     group?: string;
-    groupExtension?: string;
     teacher?: string;
     length?: number;
     materialen?: string;
@@ -32,7 +31,6 @@
   export let selectedLesson: Option | null = null;
   export let selectedSchool: Option | null = null;
   export let selectedGroup: string = '';
-  export let groupExtension: string = '';
   export let selectedTeacher: Option | null = null;
   export let lessonLength: number = 45;
   export let materialen: string = '';
@@ -46,7 +44,6 @@
     selectedLesson = lessonOptions.find(opt => opt.value === initialValues.lesson) || null;
     selectedSchool = schoolOptions.find(opt => opt.value === initialValues.school) || null;
     selectedGroup = initialValues.group ?? '';
-    groupExtension = initialValues.groupExtension ?? '';
     selectedTeacher = teacherOptions.find(opt => opt.value === initialValues.teacher) || null;
     lessonLength = initialValues.length ?? 45;
     materialen = initialValues.materialen ?? '';
@@ -68,7 +65,6 @@
       selectedLesson: selectedLesson ? selectedLesson.value : '',
       selectedSchool: selectedSchool ? selectedSchool.value : '',
       selectedGroup,
-      groupExtension,
       selectedTeacher: selectedTeacher ? selectedTeacher.value : '',
       lessonLength,
       materialen,
@@ -104,16 +100,7 @@
   </label>
   <label>
     Klas/Groep:
-    <select bind:value={selectedGroup} required>
-      <option value="" disabled selected>Kies een groep...</option>
-      {#each groupOptions as opt}
-        <option value={opt.value}>{opt.label}</option>
-      {/each}
-    </select>
-  </label>
-  <label>
-    Uitbreiding klas/groep (optioneel):
-    <input type="text" bind:value={groupExtension} placeholder="Bijv. Extra, B, 2e uur..." />
+    <input type="text" bind:value={selectedGroup} placeholder="Klas of groep..." />
   </label>
   <label>
     Vakdocent:

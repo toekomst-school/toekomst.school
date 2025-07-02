@@ -130,12 +130,10 @@ declare module '@event-calendar/core';
     let currentUserLabels: string[] = [];
     let isAdmin: boolean = false;
     let isVakdocent: boolean = false;
-    let currentTab: string = 'beschikbaar'; // 'beschikbaar' or 'mijn-planning'
+    let currentTab: string = 'beschikbaar'; // 'beschikbaar', 'mijn-planning', or 'alle-workshops'
 
     const databaseId = 'lessen';
     const collectionId = 'planning';
-
-    let groupExtension: string = '';
 
     // For fetching schools
     const SCHOOL_DB_ID = 'scholen';
@@ -152,7 +150,6 @@ declare module '@event-calendar/core';
       lesson?: string;
       school?: string;
       group?: string;
-      groupExtension?: string;
       materialen?: string;
       description?: string;
       length?: number;
@@ -197,6 +194,9 @@ declare module '@event-calendar/core';
     let showViewModal: boolean = false;
     let viewEvent: any = null;
 
+    // Add a derived store for all events
+    const allEvents: Readable<any[]> = derived(options, $options => $options.events);
+
     onMount(async () => {
       try {
         // Fetch lessons for the select
@@ -234,13 +234,12 @@ declare module '@event-calendar/core';
             title: doc.title || '',
             start: String(doc.start),
             end: String(doc.end),
-            color: doc.color || '',
+            color: doc.teacher ? 'var(--accent)' : 'var(--warning)',
             status: doc.status || '',
             teacher: doc.teacher ? String(doc.teacher) : '',
             lesson: doc.lesson ? String(doc.lesson) : '',
             school: doc.school ? String(doc.school) : '',
             group: doc.group || '',
-            groupExtension: doc.groupExtension || '',
             materialen: doc.materialen || '',
             description: doc.description || '',
             length: doc.length || 45,
@@ -249,12 +248,11 @@ declare module '@event-calendar/core';
               school: doc.school,
               teacher: doc.teacher,
               group: doc.group,
-              groupExtension: doc.groupExtension,
               materialen: doc.materialen,
               status: doc.status,
               description: doc.description,
               length: doc.length,
-              color: doc.color,
+              color: doc.teacher ? 'var(--accent)' : 'var(--warning)',
               start: doc.start,
               end: doc.end
             }
@@ -274,7 +272,7 @@ declare module '@event-calendar/core';
      */
     async function claimEvent(event: any) {
         if (!currentUserId) return;
-        const updatedEvent = { ...event, teacher: currentUserId, status: 'confirmed', color: 'var(--accent)' };
+        const updatedEvent = { ...event, teacher: currentUserId, status: 'confirmed' };
         try {
             await databases.updateDocument(databaseId, collectionId, updatedEvent.id, updatedEvent);
             // @ts-ignore
@@ -301,7 +299,6 @@ declare module '@event-calendar/core';
         selectedLesson = lessonOptions.find(opt => opt.value === event.lesson) || null;
         selectedSchool = schoolOptions.find(opt => opt.value === event.school) || null;
         selectedGroup = event.group || '';
-        groupExtension = event.groupExtension || '';
         selectedTeacher = teacherOptions.find(opt => opt.value === event.teacher) || null;
         lessonLength = event.length || 45;
         materialen = event.materialen || '';
@@ -316,7 +313,6 @@ declare module '@event-calendar/core';
         selectedLesson = null;
         selectedSchool = null;
         selectedGroup = '';
-        groupExtension = '';
         selectedTeacher = null;
         lessonLength = 45;
         materialen = '';
@@ -332,30 +328,30 @@ declare module '@event-calendar/core';
         if (e && e.preventDefault) e.preventDefault();
         if (!editEvent) return;
         const totalMinutes = Number(lessonLength);
-        const end = new Date(new Date(editEventStart).getTime() + totalMinutes * 60000).toISOString();
+        // Calculate end time as local string
+        const end = new Date(new Date(editEventStart).getTime() + totalMinutes * 60000)
+            .toISOString().slice(0, 16); // "YYYY-MM-DDTHH:mm"
+        // Only send fields that are part of the Appwrite schema (do not spread ...editEvent)
         const updatedEvent = {
-            ...editEvent,
             description,
-            start: new Date(editEventStart).toISOString(),
-            end,
+            start: editEventStart, // Use local time string
+            end: end,              // Use local time string
             lesson: selectedLesson ? String(selectedLesson.value) : '',
             school: selectedSchool ? String(selectedSchool.value) : '',
-            group: groupExtension ? `${selectedGroup} - ${groupExtension}` : selectedGroup,
-            groupExtension,
+            group: selectedGroup,
             teacher: selectedTeacher ? String(selectedTeacher.value) : '',
             length: lessonLength,
             materialen,
             status: selectedTeacher && selectedTeacher.value ? 'confirmed' : 'pending',
-            color: selectedTeacher && selectedTeacher.value ? 'var(--accent)' : 'var(--warning)',
         };
         try {
-            await databases.updateDocument(databaseId, collectionId, updatedEvent.id, updatedEvent);
+            await databases.updateDocument(databaseId, collectionId, editEvent.id, updatedEvent);
             options.update(current => ({
                 ...current,
-                events: current.events.map(ev => ev.id === updatedEvent.id ? updatedEvent : ev)
+                events: current.events.map(ev => ev.id === editEvent.id ? { ...ev, ...updatedEvent } : ev)
             }));
             if (calendarRef && typeof calendarRef.updateEvent === 'function') {
-                calendarRef.updateEvent(updatedEvent);
+                calendarRef.updateEvent({ ...editEvent, ...updatedEvent });
             }
         } catch (e) {
             console.error('Failed to update event:', e);
@@ -397,26 +393,55 @@ declare module '@event-calendar/core';
     async function submitCreateEvent(e: any) {
         if (e && e.preventDefault) e.preventDefault();
         const totalMinutes = Number(lessonLength);
-        const end = new Date(new Date(editEventStart).getTime() + totalMinutes * 60000).toISOString();
+        // Calculate end time as local string
+        const end = new Date(new Date(editEventStart).getTime() + totalMinutes * 60000)
+            .toISOString().slice(0, 16); // "YYYY-MM-DDTHH:mm"
         const newEvent = {
             description,
-            start: new Date(editEventStart).toISOString(),
-            end,
+            start: editEventStart, // Use local time string
+            end: end,              // Use local time string
             lesson: selectedLesson ? String(selectedLesson.value) : '',
             school: selectedSchool ? String(selectedSchool.value) : '',
-            group: groupExtension ? `${selectedGroup} - ${groupExtension}` : selectedGroup,
-            groupExtension,
+            group: selectedGroup,
             teacher: selectedTeacher ? String(selectedTeacher.value) : '',
             length: lessonLength,
             materialen,
             status: selectedTeacher && selectedTeacher.value ? 'confirmed' : 'pending',
-            color: selectedTeacher && selectedTeacher.value ? 'var(--accent)' : 'var(--warning)',
         };
         try {
             const doc = await databases.createDocument(databaseId, collectionId, 'unique()', newEvent);
+            // Ensure the event added to the store matches the structure from Appwrite fetch
+            const eventForStore = {
+                id: doc.$id,
+                title: doc.title || '',
+                start: doc.start,
+                end: doc.end,
+                color: doc.teacher ? 'var(--accent)' : 'var(--warning)',
+                status: doc.status || '',
+                teacher: doc.teacher ? String(doc.teacher) : '',
+                lesson: doc.lesson ? String(doc.lesson) : '',
+                school: doc.school ? String(doc.school) : '',
+                group: doc.group || '',
+                materialen: doc.materialen || '',
+                description: doc.description || '',
+                length: doc.length || 45,
+                extendedProps: {
+                  lesson: doc.lesson,
+                  school: doc.school,
+                  teacher: doc.teacher,
+                  group: doc.group,
+                  materialen: doc.materialen,
+                  status: doc.status,
+                  description: doc.description,
+                  length: doc.length,
+                  color: doc.teacher ? 'var(--accent)' : 'var(--warning)',
+                  start: doc.start,
+                  end: doc.end
+                }
+            };
             options.update(current => ({
                 ...current,
-                events: [...current.events, { ...newEvent, id: doc.$id }]
+                events: [...current.events, eventForStore]
             }));
         } catch (e) {
             console.error('Failed to create event:', e);
@@ -493,10 +518,14 @@ declare module '@event-calendar/core';
 <div style="display: flex; justify-content: flex-end; margin-bottom: 1rem; gap: 1rem;">
     {#if isAdmin}
       <button type="button" class="add-workshop-btn" on:click={openCreateModal}>+ Workshop toevoegen</button>
+      <button type="button" class="tab-btn" class:active-tab={currentTab === 'alle-workshops'} on:click={() => currentTab = 'alle-workshops'}>Alle workshops</button>
     {/if}
     <button type="button" class="tab-btn" class:active-tab={currentTab === 'mijn-planning'} on:click={() => currentTab = 'mijn-planning'}>Mijn planning</button>
 </div>
 
+{#if isAdmin && currentTab === 'alle-workshops'}
+    <Calendar bind:this={calendarRef} key={calendarKey + '-alle'} plugins={[TimeGrid, DayGrid, List]} options={{ ...$options, events: $options.events }} />
+{/if}
 {#if currentTab === 'beschikbaar'}
     <!-- Beschikbare events calendar only -->
     <Calendar bind:this={calendarRef} key={calendarKey + '-beschikbaar'} plugins={[TimeGrid, DayGrid, List]} options={{ ...$options, events: $availableEvents }} />
@@ -528,7 +557,6 @@ declare module '@event-calendar/core';
             lesson: selectedLesson ? String(selectedLesson.value) : '',
             school: selectedSchool ? String(selectedSchool.value) : '',
             group: selectedGroup,
-            groupExtension,
             teacher: selectedTeacher ? String(selectedTeacher.value) : '',
             length: lessonLength,
             materialen,
@@ -539,7 +567,6 @@ declare module '@event-calendar/core';
         bind:selectedLesson
         bind:selectedSchool
         bind:selectedGroup
-        bind:groupExtension
         bind:selectedTeacher
         bind:lessonLength
         bind:materialen
@@ -566,7 +593,6 @@ declare module '@event-calendar/core';
         bind:selectedLesson
         bind:selectedSchool
         bind:selectedGroup
-        bind:groupExtension
         bind:selectedTeacher
         bind:lessonLength
         bind:materialen

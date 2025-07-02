@@ -50,9 +50,6 @@
       <div><span>Les:</span> {#if event.lessonId}<a href={`/lessen/${event.lessonId}`} target="_blank">{event.lessonName}</a>{:else}-{/if}</div>
       <div><span>School:</span> {#if event.schoolId}<a href={`/scholen/${event.schoolId}`} target="_blank">{event.schoolName}</a>{:else}-{/if}</div>
       <div><span>Groep:</span> {event.group}</div>
-      {#if event.groupExtension}
-        <div><span>Uitbreiding:</span> {event.groupExtension}</div>
-      {/if}
       <div><span>Vakdocent:</span> {#if event.teacherId}<a href={`/team/${event.teacherId}`} target="_blank">{event.teacherName}</a>{:else}-{/if}</div>
       <div><span>Start:</span> {event.start}</div>
       <div><span>Eind:</span> {event.end}</div>
