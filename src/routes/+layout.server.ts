@@ -5,13 +5,14 @@ import { redirect } from '@sveltejs/kit';
 const PUBLIC_ROUTES = ['/', '/game', '/tabcontrol'];
 
 export const load: LayoutServerLoad = async ({ url, cookies }) => {
+  console.log('Server cookies:', cookies.getAll());
   try {
     const user = await account.get();
     if (url.pathname === '/') {
       throw redirect(307, '/dashboard');
     }
     return { user };
-  } catch (e) {
+  } catch {
     if (PUBLIC_ROUTES.includes(url.pathname)) {
       return {};
     }

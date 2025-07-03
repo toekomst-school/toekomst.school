@@ -16,6 +16,7 @@ declare module '@event-calendar/core';
     import { Client, Databases, Query } from 'appwrite';
     import WorkshopView from '$lib/components/WorkshopView.svelte';
     import { appwrite } from '$lib/appwrite';
+    import { goto } from '$app/navigation';
 
     // Calculate Monday of this week
     const now = new Date();
@@ -490,6 +491,10 @@ declare module '@event-calendar/core';
             schoolData
         };
         console.log('viewEvent for modal:', viewEvent);
+        // Update the URL with the event id as a query param, without reloading
+        if (viewEvent.id) {
+            goto(`/planning?id=${viewEvent.id}`, { replaceState: true, keepfocus: true, noscroll: true });
+        }
         showViewModal = true;
     }
     function closeViewModal() {
@@ -512,6 +517,21 @@ declare module '@event-calendar/core';
         if (!event && $availableEvents) event = $availableEvents.find(ev => ev.id === eventId || ev.$id === eventId);
         if (!event) event = currentViewEvent; // fallback
         openEditModal(event);
+    }
+
+    // Add a reactive statement that watches $page.url.searchParams.get('id') and, if present and not already open, finds the event and calls openViewModal for it
+    $: {
+        const eventIdFromUrl = $page.url.searchParams.get('id');
+        if (eventIdFromUrl && !showViewModal) {
+            // Find the event in the current events list
+            let event = null;
+            if ($options && $options.events) {
+                event = $options.events.find(ev => ev.id === eventIdFromUrl || ev.$id === eventIdFromUrl);
+            }
+            if (event) {
+                openViewModal(event);
+            }
+        }
     }
 </script>
 
