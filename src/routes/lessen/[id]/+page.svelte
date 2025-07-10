@@ -35,8 +35,28 @@
   <div class="lesson-view-card"><p class="text-red-500">{error}</p></div>
 {:else if lesson}
   <div class="lesson-view-card">
-    <button class="edit-btn" on:click={editLesson}>Bewerk deze les</button>
-    <h1>{lesson.onderwerp || 'Les zonder titel'}</h1>
+    {#if lesson.videoUrl}
+      <div class="lesson-video-preview">
+        <iframe
+          title={lesson.onderwerp || 'Lesvideo'}
+          width="560"
+          height="315"
+          src={lesson.videoUrl}
+          frameborder="0"
+          allowfullscreen
+          sandbox="allow-same-origin allow-scripts allow-popups"
+          style="width: 100%; max-width: 640px; aspect-ratio: 16/9; height: auto; margin-bottom: 1.5rem; border-radius: 12px; border: none; background: #000;"
+        ></iframe>
+      </div>
+    {:else if lesson.videoThumbnail}
+      <div class="lesson-video-preview">
+        <img src={lesson.videoThumbnail} alt="Video preview" style="max-width: 100%; max-height: 180px; margin-bottom: 1.5rem; border-radius: 12px;" />
+      </div>
+    {/if}
+    <div class="lesson-title-row">
+      <h1>{lesson.onderwerp || 'Les zonder titel'}</h1>
+      <button class="edit-btn" on:click={editLesson}>Bewerk deze les</button>
+    </div>
     <div class="lesson-info-grid">
       <div><span>Lesnummer:</span> {lesson.lesnummer}</div>
       <div><span>Doelgroep/Leerjaar:</span> {lesson.doelgroep}</div>
@@ -72,7 +92,7 @@
   position: relative;
 }
 .lesson-view-card h1 {
-  margin-bottom: 2rem;
+  margin-bottom: 0;
   font-size: 2.2rem;
   color: var(--accent);
 }
@@ -87,10 +107,13 @@
   color: var(--foreground);
   margin-right: 0.5rem;
 }
+.lesson-title-row {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 2rem;
+}
 .edit-btn {
-  position: absolute;
-  right: 2rem;
-  top: 1.5rem;
   background: var(--accent);
   color: #fff;
   border: none;
@@ -99,6 +122,7 @@
   font-weight: bold;
   cursor: pointer;
   transition: background 0.2s;
+  font-size: 1rem;
 }
 .edit-btn:hover {
   background: var(--warning);

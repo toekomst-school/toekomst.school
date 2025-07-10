@@ -41,6 +41,24 @@
   <div class="card-header">
     <button class="close-btn" on:click={close} aria-label="Sluiten">×</button>
   </div>
+  {#if event.lessonVideoUrl}
+    <div class="lesson-video-preview">
+      <iframe
+        title={event.lessonName || 'Lesvideo'}
+        width="560"
+        height="315"
+        src={event.lessonVideoUrl}
+        frameborder="0"
+        allowfullscreen
+        sandbox="allow-same-origin allow-scripts allow-popups"
+        style="width: 100%; max-width: 640px; aspect-ratio: 16/9; height: auto; margin-bottom: 1.5rem; border-radius: 12px; border: none; background: #000;"
+      ></iframe>
+    </div>
+  {:else if event.lessonVideoThumbnail}
+    <div class="lesson-video-preview">
+      <img src={event.lessonVideoThumbnail} alt="Video preview" style="max-width: 100%; max-height: 180px; margin-bottom: 1.5rem; border-radius: 12px;" />
+    </div>
+  {/if}
   <div class="details-title-row">
     <h2>Workshop details</h2>
     <button class="icon-btn edit-icon-btn" on:click={edit} aria-label="Bewerk" title="Bewerk deze workshop"><Pencil size={20} /></button>

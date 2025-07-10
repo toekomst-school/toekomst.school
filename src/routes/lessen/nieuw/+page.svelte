@@ -37,6 +37,9 @@
   let doelgroep_range = [doelgroep_min, doelgroep_max];
   let duurError = '';
 
+  let videoUrl = '';
+  let videoThumbnail = '';
+
   const kerndoelenOpties = [
     { group: 'Digitale systemen', options: [
       { value: 'ds1', label: 'Digitale systemen' },
@@ -152,6 +155,8 @@
         evaluatie = lesson.evaluatie || '';
         feedback = lesson.feedback || '';
         aanvullend = lesson.aanvullend || '';
+        videoUrl = lesson.videoUrl || '';
+        videoThumbnail = lesson.videoThumbnail || '';
       } catch (e) {
         error = 'Kon les niet ophalen.';
         console.error(e);
@@ -163,6 +168,8 @@
       duur = 45;
       cursus = '';
       kerndoelenSelected = [];
+      videoUrl = '';
+      videoThumbnail = '';
       // Prefill cursus from query param if present
       if (searchParams && searchParams.get('cursus')) {
         cursus = searchParams.get('cursus');
@@ -189,7 +196,9 @@
         reflectie,
         evaluatie,
         feedback,
-        aanvullend
+        aanvullend,
+        videoUrl,
+        videoThumbnail
       };
       if (editing) {
         await databases.updateDocument(databaseId, collectionId, lessonId, doc);
@@ -367,6 +376,26 @@ Programmeeropdracht met een eenvoudige tool zoals Scratch.</small>
       <label>Aanvullende Opdrachten (optioneel):</label>
       <textarea class="border w-full" bind:value={aanvullend}></textarea>
       <small>Suggesties voor leerlingen die extra uitdaging nodig hebben of voor thuisgebruik.</small>
+    </div>
+    <div>
+      <label>Edflix/Peertube Video URL (optioneel):</label>
+      <input class="border w-full" bind:value={videoUrl} placeholder="https://edflix.nl/videos/watch/xyz" />
+      <small>Voeg een Edflix.nl (Peertube) video-URL toe voor deze les.</small>
+      {#if videoUrl}
+        <div class="mt-2">
+          <video src={videoUrl} controls style="max-width: 100%; max-height: 200px;" poster={videoThumbnail}></video>
+        </div>
+      {/if}
+    </div>
+    <div>
+      <label>Video preview afbeelding (optioneel):</label>
+      <input class="border w-full" bind:value={videoThumbnail} placeholder="URL naar preview afbeelding (thumbnail)" />
+      <small>Voeg een URL toe naar de preview afbeelding van de video.</small>
+      {#if videoThumbnail}
+        <div class="mt-2">
+          <img src={videoThumbnail} alt="Video preview" style="max-width: 100%; max-height: 120px; border-radius: 8px;" />
+        </div>
+      {/if}
     </div>
     <button class="cta" type="submit" disabled={adding}>{adding ? (editing ? 'Bijwerken...' : 'Toevoegen...') : (editing ? 'Les Bijwerken' : 'Les Toevoegen')}</button>
   </form>

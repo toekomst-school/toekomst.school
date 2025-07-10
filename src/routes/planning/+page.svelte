@@ -8,7 +8,7 @@ declare module '@event-calendar/core';
     import List from '@event-calendar/list';
     import { writable, type Writable } from 'svelte/store';
     import { account, databases } from '$lib/appwrite';
-    import { onMount } from 'svelte';
+    import { onMount, afterUpdate } from 'svelte';
     import { derived } from 'svelte/store';
     import { page } from '$app/stores';
     import WorkshopForm from '$lib/components/WorkshopForm.svelte';
@@ -167,6 +167,7 @@ declare module '@event-calendar/core';
       eventClick: (info: any) => void;
       slotMinTime: string;
       slotMaxTime: string;
+      eventContent: (info: any) => string | HTMLElement;
     }
 
     const options: Writable<CalendarOptions> = writable({
@@ -185,6 +186,28 @@ declare module '@event-calendar/core';
         slotMinTime: '07:00:00',
         slotMaxTime: '22:00:00',
         // slotLabelInterval: 30,
+        eventContent: (info) => {
+            // Show time, school name, and lesson title on separate lines
+            const time = info.timeText;
+            const event = info.event;
+            let schoolName = '';
+            let lessonName = '';
+            if (event.extendedProps && event.extendedProps.school) {
+                const schoolOpt = schoolOptions.find(opt => opt.value === event.extendedProps.school);
+                if (schoolOpt) schoolName = schoolOpt.label;
+            }
+            if (event.extendedProps && event.extendedProps.lesson) {
+                const lessonOpt = lessonOptions.find(opt => opt.value === event.extendedProps.lesson);
+                if (lessonOpt) lessonName = lessonOpt.label;
+            }
+            // Build the display with line breaks
+            const parts = [];
+            if (time) parts.push(time);
+            if (schoolName) parts.push(schoolName);
+            if (lessonName) parts.push(lessonName);
+            // Return as HTML with <br/>
+            return { html: parts.join('<br/>') };
+        },
     });
 
     // Filtered event lists
@@ -197,6 +220,22 @@ declare module '@event-calendar/core';
 
     // Add a derived store for all events
     const allEvents: Readable<any[]> = derived(options, $options => $options.events);
+
+    // Set currentTab based on hash
+    function setTabFromHash() {
+        const hash = window.location.hash.replace('#', '');
+        if (hash === 'beschikbaar' || hash === 'mijn-planning' || hash === 'alle-workshops') {
+            currentTab = hash;
+        } else {
+            currentTab = 'beschikbaar';
+        }
+    }
+
+    onMount(() => {
+        setTabFromHash();
+        window.addEventListener('hashchange', setTabFromHash);
+        return () => window.removeEventListener('hashchange', setTabFromHash);
+    });
 
     onMount(async () => {
       try {
@@ -536,11 +575,12 @@ declare module '@event-calendar/core';
 </script>
 
 <div style="display: flex; justify-content: flex-end; margin-bottom: 1rem; gap: 1rem;">
+    <button type="button" class="tab-btn" class:active-tab={currentTab === 'beschikbaar'} on:click={() => { currentTab = 'beschikbaar'; window.location.hash = 'beschikbaar'; }}>Beschikbaar</button>
+    <button type="button" class="tab-btn" class:active-tab={currentTab === 'mijn-planning'} on:click={() => { currentTab = 'mijn-planning'; window.location.hash = 'mijn-planning'; }}>Mijn planning</button>
     {#if isAdmin}
+      <button type="button" class="tab-btn" class:active-tab={currentTab === 'alle-workshops'} on:click={() => { currentTab = 'alle-workshops'; window.location.hash = 'alle-workshops'; }}>Alle workshops</button>
       <button type="button" class="add-workshop-btn" on:click={openCreateModal}>+ Workshop toevoegen</button>
-      <button type="button" class="tab-btn" class:active-tab={currentTab === 'alle-workshops'} on:click={() => currentTab = 'alle-workshops'}>Alle workshops</button>
     {/if}
-    <button type="button" class="tab-btn" class:active-tab={currentTab === 'mijn-planning'} on:click={() => currentTab = 'mijn-planning'}>Mijn planning</button>
 </div>
 
 {#if isAdmin && currentTab === 'alle-workshops'}
@@ -744,7 +784,7 @@ declare module '@event-calendar/core';
 }
 .tab-btn {
     background: var(--ash-grey);
-    color: var(--color-blackened-steel);
+    color: var(--accent);
     border: none;
     border-radius: var(--radius);
     padding: 0.5rem 1rem;

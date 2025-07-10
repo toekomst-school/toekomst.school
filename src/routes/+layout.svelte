@@ -119,68 +119,67 @@
   }
 </script>
 
-{#if $page.url.pathname !== '/'}
-  {#if data.user}
-    {#if showRoleModal}
-      <Sheet open={showRoleModal}>
-        <SheetContent side="top">
-          <SheetHeader>
-            <SheetTitle>Kies je rol</SheetTitle>
-            <SheetDescription>
-              Ben je een leraar of een leerling? Dit helpt ons de juiste ervaring te bieden.
-            </SheetDescription>
-          </SheetHeader>
-          <div class="flex gap-4 justify-center my-6">
-            <Button on:click={() => setRole('teacher')} variant={selectedRole === 'teacher' ? 'secondary' : 'default'}>Leraar</Button>
-            <Button on:click={() => setRole('student')} variant={selectedRole === 'student' ? 'secondary' : 'default'}>Leerling</Button>
-          </div>
-          <SheetFooter>
-            <div class="text-xs text-gray-500 text-center">Je kunt dit later aanpassen via je profiel.</div>
-          </SheetFooter>
-        </SheetContent>
-      </Sheet>
-    {/if}
-    <Sidebar.Provider style="--sidebar-width: 19rem;">
-      <AppSidebar />
-      <Sidebar.Inset>
-        <header class="flex h-16 shrink-0 items-center gap-2 px-4">
-          <Sidebar.Trigger class="-ml-1" />
-          <Separator orientation="vertical" class="mr-2 data-[orientation=vertical]:h-4" />
-          <Breadcrumb.Root>
-            <Breadcrumb.List>
-              <Breadcrumb.Item class="hidden md:block">
-                <Breadcrumb.Link href="/">{breadcrumbMain}</Breadcrumb.Link>
-              </Breadcrumb.Item>
-              {#if breadcrumbSecond}
-                <Breadcrumb.Separator class="hidden md:block" />
-                <Breadcrumb.Item>
-                  <Breadcrumb.Link href={breadcrumbSecondHref}>{breadcrumbSecond}</Breadcrumb.Link>
-                </Breadcrumb.Item>
-              {/if}
-              {#if breadcrumbPage}
-                <Breadcrumb.Separator class="hidden md:block" />
-                <Breadcrumb.Item>
-                  <Breadcrumb.Page>{breadcrumbPage}</Breadcrumb.Page>
-                </Breadcrumb.Item>
-              {/if}
-            </Breadcrumb.List>
-          </Breadcrumb.Root>
-        </header>
-        <div class="flex flex-1 flex-col gap-4 p-4 pt-0">
-            <slot />
+{#if data.user}
+  {#if showRoleModal}
+    <Sheet open={showRoleModal}>
+      <SheetContent side="top">
+        <SheetHeader>
+          <SheetTitle>Kies je rol</SheetTitle>
+          <SheetDescription>
+            Ben je een leraar of een leerling? Dit helpt ons de juiste ervaring te bieden.
+          </SheetDescription>
+        </SheetHeader>
+        <div class="flex gap-4 justify-center my-6">
+          <Button on:click={() => setRole('teacher')} variant={selectedRole === 'teacher' ? 'secondary' : 'default'}>Leraar</Button>
+          <Button on:click={() => setRole('student')} variant={selectedRole === 'student' ? 'secondary' : 'default'}>Leerling</Button>
         </div>
-      </Sidebar.Inset>
-    </Sidebar.Provider>
+        <SheetFooter>
+          <div class="text-xs text-gray-500 text-center">Je kunt dit later aanpassen via je profiel.</div>
+        </SheetFooter>
+      </SheetContent>
+    </Sheet>
   {/if}
+  <Sidebar.Provider style="--sidebar-width: 19rem;">
+    <AppSidebar />
+    <Sidebar.Inset>
+      <header class="flex h-16 shrink-0 items-center gap-2 px-4">
+        <Sidebar.Trigger class="-ml-1" />
+        <Separator orientation="vertical" class="mr-2 data-[orientation=vertical]:h-4" />
+        <Breadcrumb.Root>
+          <Breadcrumb.List>
+            <Breadcrumb.Item class="hidden md:block">
+              <Breadcrumb.Link href="/">{breadcrumbMain}</Breadcrumb.Link>
+            </Breadcrumb.Item>
+            {#if breadcrumbSecond}
+              <Breadcrumb.Separator class="hidden md:block" />
+              <Breadcrumb.Item>
+                <Breadcrumb.Link href={breadcrumbSecondHref}>{breadcrumbSecond}</Breadcrumb.Link>
+              </Breadcrumb.Item>
+            {/if}
+            {#if breadcrumbPage}
+              <Breadcrumb.Separator class="hidden md:block" />
+              <Breadcrumb.Item>
+                <Breadcrumb.Page>{breadcrumbPage}</Breadcrumb.Page>
+              </Breadcrumb.Item>
+            {/if}
+          </Breadcrumb.List>
+        </Breadcrumb.Root>
+      </header>
+      <div class="flex flex-1 flex-col gap-4 p-4 pt-0">
+          <slot />
+      </div>
+    </Sidebar.Inset>
+  </Sidebar.Provider>
 {:else}
   <div class="fixed top-4 left-4 z-50">
     <img src="/toekomst_logo.svg" alt="Toekomst Logo" class="h-12 w-auto" />
   </div>
   <div class="fixed top-4 right-4 z-50">
-	<a href="/dashboard">
-    <button class="h-10 px-6  bg-blue-600 text-white rounded shadow hover:bg-blue-700 transition flex items-center" style="line-height:1;">
-      Login
-    </button></a>
+    <a href="/dashboard">
+      <button class="h-10 px-6  bg-blue-600 text-white rounded shadow hover:bg-blue-700 transition flex items-center" style="line-height:1;">
+        Login
+      </button>
+    </a>
   </div>
   <slot />
 {/if}

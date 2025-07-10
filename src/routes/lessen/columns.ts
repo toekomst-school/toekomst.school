@@ -10,6 +10,8 @@ export type Lesson = {
   duur: number;
   cursus?: string;
   cursus_name?: string;
+  videoUrl?: string;
+  videoThumbnail?: string;
 };
 
 // Helper to format doelgroep
