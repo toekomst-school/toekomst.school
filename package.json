@@ -60,6 +60,8 @@
 		"dotenv": "^17.0.0",
 		"fs": "^0.0.1-security",
 		"ical-generator": "^9.0.0",
+		"lucide-svelte": "^0.525.0",
+		"marked": "^16.0.0",
 		"node-appwrite": "^17.0.0",
 		"papaparse": "^5.5.3",
 		"pnpm": "^10.12.3",
