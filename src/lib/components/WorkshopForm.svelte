@@ -53,15 +53,16 @@
 		editEventStart = initialValues.start ? initialValues.start.slice(0, 16) : '';
 	}
 
-	function getEndTime() {
+	$: endTime = (() => {
 		if (!editEventStart || !lessonLength) return '';
 		const totalMinutes = Number(lessonLength);
 		const end = new Date(new Date(editEventStart).getTime() + totalMinutes * 60000);
 		return end.toLocaleString('nl-NL', { hour: '2-digit', minute: '2-digit' });
-	}
+	})();
 
 	function handleSubmit(e: Event) {
 		e.preventDefault();
+		console.log('Workshop form submitting with length:', lessonLength);
 		dispatch('submit', {
 			selectedLesson: selectedLesson ? selectedLesson.value : '',
 			selectedSchool: selectedSchool ? selectedSchool.value : '',
@@ -118,10 +119,17 @@
 	</label>
 	<label>
 		Lengte les (minuten):
-		<input type="number" min="5" step="5" bind:value={lessonLength} required />
+		<input 
+			type="number" 
+			min="5" 
+			step="5" 
+			bind:value={lessonLength} 
+			on:input={() => console.log('Length changed to:', lessonLength)}
+			required 
+		/>
 	</label>
 	<div style="grid-column: 1 / -1; font-size: 1rem; color: var(--accent); margin-bottom: 0.5rem;">
-		Eindtijd: {getEndTime()}
+		Eindtijd: {endTime}
 	</div>
 	<label>
 		Beschrijving/opmerkingen:

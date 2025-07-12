@@ -20,6 +20,15 @@
 	let highContrastMode = false;
 	let isFullscreen = false;
 	let autoFullscreenOnFirstClick = true;
+	let confettiTriggered = false;
+	
+	// Workshop time tracking
+	let workshopStartTime = null;
+	let workshopEndTime = null;
+	let workshopTimeProgress = 0;
+	let timeUpdateInterval;
+	let currentTime = new Date();
+	let workshopData = null;
 
 	// Generate a random 6-character code (A-Z, 0-9)
 	function generateCode() {
@@ -35,13 +44,81 @@
 		if (!markdown) return 0;
 		// Count slides by counting slide separators (---) plus 1
 		const separators = (markdown.match(/^---$/gm) || []).length;
-		return separators + 1;
+		const lessonSlideCount = separators + 1;
+		// Add 1 for the hardcoded "Einde van de workshop" slide
+		return lessonSlideCount + 1;
 	}
 
 	function parseMarkdownSlides(markdown: string): string[] {
 		if (!markdown) return [];
 		// Split by slide separators (---) and filter out empty slides
 		return markdown.split(/^---$/gm).filter(slide => slide.trim());
+	}
+
+	function updateWorkshopTimeProgress() {
+		currentTime = new Date();
+		
+		if (workshopStartTime && workshopEndTime) {
+			const start = new Date(workshopStartTime);
+			const end = new Date(workshopEndTime);
+			const total = end.getTime() - start.getTime();
+			const elapsed = currentTime.getTime() - start.getTime();
+			
+			workshopTimeProgress = Math.max(0, Math.min(100, (elapsed / total) * 100));
+			
+			// Debug progress calculation
+			console.log('⏰ Time progress update:', {
+				currentTime: currentTime.toLocaleTimeString('nl-NL'),
+				startTime: start.toLocaleTimeString('nl-NL'),
+				endTime: end.toLocaleTimeString('nl-NL'),
+				elapsed: Math.round(elapsed / (1000 * 60)) + ' minutes',
+				total: Math.round(total / (1000 * 60)) + ' minutes',
+				progress: Math.round(workshopTimeProgress) + '%'
+			});
+		} else {
+			// No workshop found, use session start time (start from 0)
+			workshopTimeProgress = 0;
+			console.log('⏰ No workshop timing available, progress = 0%');
+		}
+	}
+
+	function startTimeTracking() {
+		// Update every second
+		timeUpdateInterval = setInterval(updateWorkshopTimeProgress, 1000);
+		updateWorkshopTimeProgress(); // Initial update
+	}
+
+	function stopTimeTracking() {
+		if (timeUpdateInterval) {
+			clearInterval(timeUpdateInterval);
+			timeUpdateInterval = null;
+		}
+	}
+
+	async function checkForActiveWorkshop() {
+		try {
+			// Check if this presentation is part of an active workshop
+			const workshopId = new URLSearchParams(window.location.search).get('workshop');
+			
+			if (workshopId) {
+				// Load workshop data from URL parameter
+				const { databases } = await import('$lib/appwrite');
+				const workshop = await databases.getDocument('lessen', 'planning', workshopId);
+				
+				workshopStartTime = workshop.start;
+				workshopEndTime = workshop.end;
+				console.log('Workshop found:', { start: workshopStartTime, end: workshopEndTime });
+			} else {
+				// No workshop, start timing from now
+				workshopStartTime = null;
+				workshopEndTime = null;
+				console.log('No workshop found, starting from session start');
+			}
+		} catch (error) {
+			console.error('Error checking for workshop:', error);
+			workshopStartTime = null;
+			workshopEndTime = null;
+		}
 	}
 
 	async function requestFullscreen() {
@@ -78,6 +155,9 @@
 	onMount(async () => {
 		// Load Reveal.js from CDN
 		await loadRevealJS();
+		
+		// Check for workshop and initialize time tracking
+		await checkForActiveWorkshop();
 		
 		// Check if there's a session code in the URL (from present page)
 		const urlSessionCode = new URLSearchParams(window.location.search).get('session');
@@ -262,11 +342,15 @@
 	onDestroy(() => {
 		if (pollInterval) clearInterval(pollInterval);
 		if (commandPollInterval) clearInterval(commandPollInterval);
+		stopTimeTracking();
 	});
 
 	async function startLesson() {
 		console.log('startLesson called, parsedSlides:', parsedSlides.length);
 		isPresenting = true;
+		
+		// Start time tracking
+		startTimeTracking();
 		
 		// Clear any existing polling intervals
 		if (pollInterval) clearInterval(pollInterval);
@@ -324,6 +408,11 @@
 			revealInstance.addEventListener('slidechanged', (event: any) => {
 				currentSlide = event.indexh;
 				updateSlide();
+				
+				// Trigger confetti on last slide
+				if (currentSlide === totalSlides - 1) {
+					triggerConfetti();
+				}
 			});
 		} else {
 			console.log('Failed to initialize Reveal.js - missing dependencies:', {
@@ -352,11 +441,65 @@
 					const data = await response.json();
 					connectedDevices = data.connectedDevices;
 					
+					// Log all received data from API
+					console.log('📋 PRESENT PAGE - All data received from API:', {
+						hasSlides: !!data.slides,
+						hasWorkshopData: !!data.workshopData,
+						hasWorkshopStart: !!data.workshopStartTime,
+						hasWorkshopEnd: !!data.workshopEndTime,
+						workshopTitle: data.workshopData?.title,
+						workshopStart: data.workshopStartTime,
+						workshopEnd: data.workshopEndTime,
+						allKeys: Object.keys(data)
+					});
+					
+					// Update workshop timing if available (even if slides haven't changed)
+					if (data.workshopData && data.workshopStartTime && data.workshopEndTime && 
+						(!workshopStartTime || !workshopEndTime)) {
+						workshopData = data.workshopData;
+						workshopStartTime = data.workshopStartTime;
+						workshopEndTime = data.workshopEndTime;
+						console.log('🕐 UPDATING workshop timing from polling:', {
+							start: workshopStartTime,
+							end: workshopEndTime,
+							title: workshopData?.title
+						});
+						
+						// Start time tracking if not already started
+						if (!timeUpdateInterval) {
+							startTimeTracking();
+							console.log('🕐 Started time tracking from polling data');
+						}
+					}
+					
 					// Check if slides have been updated by a connecting device
 					if (data.slides && data.slides !== slides) {
 						slides = data.slides;
 						totalSlides = data.totalSlides || countSlidesInMarkdown(slides);
 						parsedSlides = parseMarkdownSlides(slides);
+						
+						// Update workshop data if provided
+						if (data.workshopData) {
+							workshopData = data.workshopData;
+							workshopStartTime = data.workshopStartTime;
+							workshopEndTime = data.workshopEndTime;
+							console.log('📅 FULL WORKSHOP DATA RECEIVED FROM CONNECT PAGE:');
+							console.log('  🏢 Title:', workshopData.title);
+							console.log('  🏫 School ID:', workshopData.school);
+							console.log('  🏫 School Name:', workshopData.schoolName);
+							console.log('  📚 Group/Class:', workshopData.group);
+							console.log('  👨‍🏫 Teacher:', workshopData.teacher);
+							console.log('  📍 Start Time:', workshopStartTime, '→', new Date(workshopStartTime).toLocaleString('nl-NL'));
+							console.log('  📍 End Time:', workshopEndTime, '→', new Date(workshopEndTime).toLocaleString('nl-NL'));
+							console.log('  ⏱️ Duration:', Math.round((new Date(workshopEndTime).getTime() - new Date(workshopStartTime).getTime()) / (1000 * 60)), 'minutes');
+							console.log('  🔍 All workshop fields:', Object.keys(workshopData));
+							
+							// Start time tracking now that we have workshop data
+							if (!timeUpdateInterval) {
+								startTimeTracking();
+								console.log('🕐 Started time tracking with workshop data');
+							}
+						}
 						
 						// Reinitialize Reveal.js with new slides
 						if (revealInstance) {
@@ -407,6 +550,26 @@
 								revealInstance.addEventListener('slidechanged', (event: any) => {
 									currentSlide = event.indexh;
 									updateSlide();
+									
+									// Trigger confetti only on the hardcoded workshop end slide
+									const actualTotalSlides = revealInstance.getTotalSlides();
+									const isLastSlide = currentSlide === (actualTotalSlides - 1);
+									
+									console.log('🔍 CONFETTI DEBUG:', {
+										'Current Slide Index': currentSlide,
+										'Parsed Slides Length': parsedSlides.length,
+										'Reveal Total Slides': actualTotalSlides,
+										'Is last slide in deck?': isLastSlide,
+										'Expected last index': actualTotalSlides - 1,
+										'Confetti triggered?': confettiTriggered
+									});
+									
+									// Trigger confetti on the actual last slide (hardcoded workshop end slide)
+									if (isLastSlide && !confettiTriggered) {
+										console.log('🎉 TRIGGERING CONFETTI on actual last slide!');
+										confettiTriggered = true;
+										triggerConfetti();
+									}
 								});
 							}
 						}, 100);
@@ -450,6 +613,7 @@
 		// Clear intervals
 		if (pollInterval) clearInterval(pollInterval);
 		if (commandPollInterval) clearInterval(commandPollInterval);
+		stopTimeTracking();
 		
 		// Clean up session
 		await fetch(`/api/presentation/${sessionCode}`, { method: 'DELETE' });
@@ -460,6 +624,7 @@
 		qrUrl = `${baseUrl}/connect?code=${sessionCode}`;
 		connectedDevices = 0;
 		currentSlide = 0;
+		confettiTriggered = false;
 	}
 
 	function handleRemoteCommand(command: string) {
@@ -543,6 +708,61 @@
 
 	function handleFullscreenChange() {
 		isFullscreen = !!document.fullscreenElement;
+	}
+
+	function triggerConfetti() {
+		// Create confetti container
+		const confettiContainer = document.createElement('div');
+		confettiContainer.className = 'confetti-container';
+		document.body.appendChild(confettiContainer);
+		
+		// Create 3 random explosion points
+		const explosionPoints = [
+			{ x: Math.random() * 60 + 20, y: Math.random() * 40 + 20 }, // Top area
+			{ x: Math.random() * 60 + 20, y: Math.random() * 40 + 40 }, // Middle area  
+			{ x: Math.random() * 60 + 20, y: Math.random() * 40 + 60 }  // Bottom area
+		];
+		
+		// Create confetti for each explosion point
+		explosionPoints.forEach((point, explosionIndex) => {
+			for (let i = 0; i < 30; i++) {
+				const confettiPiece = document.createElement('div');
+				confettiPiece.className = 'confetti-piece';
+				
+				// Random colors
+				const colors = ['#ffa94d', '#3ba39b', '#ff6b6b', '#4ecdc4', '#45b7d1', '#f9ca24'];
+				confettiPiece.style.backgroundColor = colors[Math.floor(Math.random() * colors.length)];
+				
+				// Start from explosion point
+				confettiPiece.style.left = point.x + '%';
+				confettiPiece.style.top = point.y + '%';
+				
+				// Random explosion direction and distance
+				const angle = (Math.random() * 360) * (Math.PI / 180);
+				const distance = Math.random() * 200 + 80;
+				const duration = Math.random() * 2 + 1.5;
+				
+				// Calculate end position
+				const endX = Math.cos(angle) * distance;
+				const endY = Math.sin(angle) * distance;
+				
+				// Set CSS custom properties for animation
+				confettiPiece.style.setProperty('--end-x', endX + 'px');
+				confettiPiece.style.setProperty('--end-y', endY + 'px');
+				confettiPiece.style.animationDuration = duration + 's';
+				// Stagger explosions slightly
+				confettiPiece.style.animationDelay = (explosionIndex * 0.2 + Math.random() * 0.3) + 's';
+				
+				confettiContainer.appendChild(confettiPiece);
+			}
+		});
+		
+		// Remove confetti after animation
+		setTimeout(() => {
+			if (confettiContainer.parentNode) {
+				confettiContainer.parentNode.removeChild(confettiContainer);
+			}
+		}, 5000);
 	}
 
 	function startWaitingPoll() {
@@ -631,15 +851,27 @@
 		</div>
 	{:else}
 		<div class="presentation-mode">
+			<!-- Workshop time progress bar at top -->
+			<div class="workshop-time-bar">
+				<div class="workshop-time-fill" style="width: {workshopTimeProgress}%"></div>
+			</div>
+			
 			<div class="control-bar">
 				<div class="logo-container">
 					<img src="/toekomst_logo.svg" alt="Toekomst Logo" class="logo" />
 				</div>
-				<div class="session-info">
-					<span>Sessie: {sessionCode}</span>
-					<button class="copy-btn" on:click={copyCode}>📋</button>
+				<div class="workshop-info">
+					{#if workshopData && (workshopData.schoolName || workshopData.school)}
+						<span class="school-name">{workshopData.schoolName || 'Onbekende school'}</span>
+						{#if workshopData.group}
+							<span class="class-name">{workshopData.group}</span>
+						{/if}
+					{:else}
+						<span class="session-fallback">Presentatie Actief</span>
+					{/if}
 				</div>
 				<div class="controls-group">
+					<span class="session-code">{sessionCode}</span>
 					<button class="fullscreen-btn" class:active={isFullscreen} on:click={toggleFullscreen} title="Volledig scherm">
 						{#if isFullscreen}⤓{:else}⤢{/if}
 					</button>
@@ -660,15 +892,12 @@
 									</div>
 								</section>
 							{/each}
-							<section>
-								<div class="slide-content">
-									<h1>🏁 Einde</h1>
-									<p>Presentatie voltooid!</p>
-									<div class="qr-display">
-										<p>Leerlingen kunnen nog steeds verbinden:</p>
-										{#if qrUrl}
-											<QrCode value={qrUrl} size={150} />
-										{/if}
+							<section data-slide="last">
+								<div class="slide-content last-slide">
+									<h1>🎆 Einde van de workshop</h1>
+									<h2>Thuis verder?</h2>
+									<div class="game-link">
+										<a href="https://game.toekomst.school" target="_blank">game.toekomst.school</a>
 									</div>
 								</div>
 							</section>
@@ -903,6 +1132,50 @@
 		z-index: 9999;
 	}
 
+	.workshop-time-bar {
+		position: fixed;
+		top: 0;
+		left: 0;
+		right: 0;
+		height: 3px;
+		background: rgba(178, 178, 162, 0.3);
+		z-index: 10001;
+		overflow: hidden;
+	}
+
+	.workshop-time-fill {
+		height: 100%;
+		background: linear-gradient(90deg, #3ba39b 0%, #ffa94d 100%);
+		transition: width 1s ease;
+		box-shadow: 0 0 4px rgba(59, 163, 155, 0.6);
+	}
+
+	.workshop-time-info {
+		position: fixed;
+		top: 8px;
+		left: 0;
+		right: 0;
+		display: flex;
+		justify-content: space-between;
+		padding: 0 1rem;
+		font-family: 'IBM Plex Mono', 'Space Mono', monospace;
+		font-size: 0.8rem;
+		color: #b2b2a2;
+		z-index: 10002;
+		pointer-events: none;
+	}
+
+	.time-start, .time-end {
+		font-weight: 600;
+		color: #3ba39b;
+	}
+
+	.time-current {
+		font-weight: 700;
+		color: #ffa94d;
+		text-shadow: 0 0 4px rgba(255, 169, 77, 0.6);
+	}
+
 	.control-bar {
 		background: linear-gradient(135deg, #1d1f20 0%, #2a2d2e 100%);
 		color: #b2b2a2;
@@ -937,13 +1210,41 @@
 			contrast(89%);
 	}
 
-	.session-info {
+	.workshop-info {
 		display: flex;
+		flex-direction: column;
 		align-items: center;
-		gap: 1rem;
-		font-weight: 600;
+		gap: 0.2rem;
 		font-family: 'IBM Plex Mono', 'Space Mono', monospace;
 		color: #b2b2a2;
+	}
+
+	.school-name {
+		font-weight: 700;
+		font-size: 1.1rem;
+		color: #3ba39b;
+	}
+
+	.class-name {
+		font-weight: 500;
+		font-size: 0.9rem;
+		color: #ffa94d;
+	}
+
+	.session-fallback {
+		font-weight: 600;
+		color: #b2b2a2;
+	}
+
+	.session-code {
+		font-family: 'IBM Plex Mono', 'Space Mono', monospace;
+		font-size: 0.9rem;
+		font-weight: 600;
+		color: #b2b2a2;
+		background: rgba(59, 163, 155, 0.1);
+		padding: 0.3rem 0.6rem;
+		border-radius: 6px;
+		border: 1px solid rgba(59, 163, 155, 0.3);
 	}
 
 	.controls-group {
@@ -1021,6 +1322,127 @@
 		background: linear-gradient(135deg, #ffa94d 0%, #e6942a 100%);
 		color: #1d1f20;
 		box-shadow: 0 0 15px rgba(255, 169, 77, 0.6);
+	}
+
+	.last-slide {
+		text-align: center;
+		padding: 3rem 2rem;
+	}
+
+	.last-slide h1 {
+		font-size: 3rem;
+		color: var(--warning);
+		margin-bottom: 1rem;
+	}
+
+	.last-slide h2 {
+		font-size: 2.5rem;
+		color: var(--accent);
+		margin-bottom: 3rem;
+	}
+
+	.game-link {
+		padding: 1.5rem 2rem;
+		background: var(--warning);
+		border-radius: 15px;
+		margin: 2rem auto;
+		max-width: 500px;
+		box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+		transform: scale(1) rotate(3deg);
+		transition: all 0.3s ease;
+		animation: game-button-pulse 2s ease-in-out infinite;
+	}
+
+	.game-link:hover {
+		transform: scale(1.1) rotate(3deg);
+		box-shadow: 0 15px 40px rgba(0, 0, 0, 0.4);
+		animation-play-state: paused;
+	}
+
+	.game-link a {
+		color: black;
+		font-size: 2.2rem;
+		font-weight: bold;
+		text-decoration: none;
+		font-family: 'Orbitron', 'Bebas Neue', Arial, sans-serif;
+		letter-spacing: 0.1em;
+		text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
+	}
+
+	@keyframes game-button-pulse {
+		0% { 
+			transform: scale(1) rotate(3deg);
+			box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+		}
+		50% { 
+			transform: scale(1.05) rotate(3deg);
+			box-shadow: 0 15px 40px rgba(234, 179, 8, 0.4);
+		}
+		100% { 
+			transform: scale(1) rotate(3deg);
+			box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+		}
+	}
+
+	:global(.confetti-container) {
+		position: fixed;
+		top: 0;
+		left: 0;
+		width: 100%;
+		height: 100%;
+		pointer-events: none;
+		z-index: 9999;
+		overflow: hidden;
+	}
+
+	:global(.confetti-piece) {
+		position: absolute;
+		width: 8px;
+		height: 8px;
+		background: #ffa94d;
+		animation: confetti-explode ease-out forwards;
+		opacity: 1;
+		transform: translate(-50%, -50%);
+	}
+
+	:global(.confetti-piece):nth-child(odd) {
+		width: 10px;
+		height: 10px;
+		border-radius: 50%;
+	}
+
+	:global(.confetti-piece):nth-child(even) {
+		width: 6px;
+		height: 12px;
+		border-radius: 2px;
+	}
+
+	:global(.confetti-piece):nth-child(3n) {
+		width: 12px;
+		height: 6px;
+		border-radius: 2px;
+	}
+
+	:global(.confetti-piece):nth-child(4n) {
+		width: 8px;
+		height: 8px;
+		border-radius: 1px;
+		transform: translate(-50%, -50%) rotate(45deg);
+	}
+
+	@keyframes confetti-explode {
+		0% {
+			transform: translate(-50%, -50%) scale(0) rotate(0deg);
+			opacity: 1;
+		}
+		15% {
+			transform: translate(calc(-50% + var(--end-x) * 0.3), calc(-50% + var(--end-y) * 0.3)) scale(1.2) rotate(180deg);
+			opacity: 1;
+		}
+		100% {
+			transform: translate(calc(-50% + var(--end-x)), calc(-50% + var(--end-y))) scale(0.3) rotate(720deg);
+			opacity: 0;
+		}
 	}
 
 	.nav-area {

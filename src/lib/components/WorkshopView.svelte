@@ -254,6 +254,21 @@
 		.close-btn {
 			right: 0.5rem;
 			top: 0.5rem;
+			padding: 0.5rem;
+			min-width: 44px;
+			min-height: 44px;
+			display: flex;
+			align-items: center;
+			justify-content: center;
+		}
+		.edit-icon-btn {
+			padding: 0.5rem;
+			min-width: 44px;
+			min-height: 44px;
+			margin-left: 1rem;
+		}
+		.details-title-row {
+			margin-bottom: 2rem;
 		}
 	}
 	.address-actions {
