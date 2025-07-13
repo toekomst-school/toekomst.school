@@ -3,19 +3,12 @@
 	const data = {
 		navMain: [
 			{ title: 'Dashboard', url: '/dashboard' },
-			{
-				title: 'Planning',
-				url: '/planning',
-				children: [
-					{ title: 'Beschikbaar', url: '/planning#beschikbaar' },
-					{ title: 'Mijn planning', url: '/planning#mijn-planning' }
-				]
-			},
+			{ title: 'Planning', url: '/planning' },
 			{ title: 'Cursussen', url: '/cursussen' },
 			{ title: 'Lessen', url: '/lessen' },
 			{ title: 'Scholen', url: '/scholen', children: [] },
 			{ title: 'Team', url: '/team' },
-			{ title: 'Tabcontrol', url: '/abcontrol' },
+			{ title: 'Connect', url: '/connect' },
 			{ title: 'Game', url: '/game' }
 		]
 	};

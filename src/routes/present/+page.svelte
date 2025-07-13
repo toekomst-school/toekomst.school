@@ -409,9 +409,16 @@
 				currentSlide = event.indexh;
 				updateSlide();
 				
-				// Trigger confetti on last slide
-				if (currentSlide === totalSlides - 1) {
-					triggerConfetti();
+				// Trigger confetti only on the hardcoded workshop end slide
+				const currentSlideElement = revealInstance.getCurrentSlide();
+				if (currentSlideElement && currentSlideElement.getAttribute('data-slide') === 'last') {
+					if (!confettiTriggered) {
+						confettiTriggered = true;
+						triggerConfetti();
+					}
+				} else {
+					// Reset confetti flag when leaving the last slide
+					confettiTriggered = false;
 				}
 			});
 		} else {
@@ -552,23 +559,16 @@
 									updateSlide();
 									
 									// Trigger confetti only on the hardcoded workshop end slide
-									const actualTotalSlides = revealInstance.getTotalSlides();
-									const isLastSlide = currentSlide === (actualTotalSlides - 1);
-									
-									console.log('🔍 CONFETTI DEBUG:', {
-										'Current Slide Index': currentSlide,
-										'Parsed Slides Length': parsedSlides.length,
-										'Reveal Total Slides': actualTotalSlides,
-										'Is last slide in deck?': isLastSlide,
-										'Expected last index': actualTotalSlides - 1,
-										'Confetti triggered?': confettiTriggered
-									});
-									
-									// Trigger confetti on the actual last slide (hardcoded workshop end slide)
-									if (isLastSlide && !confettiTriggered) {
-										console.log('🎉 TRIGGERING CONFETTI on actual last slide!');
-										confettiTriggered = true;
-										triggerConfetti();
+									const currentSlideElement = revealInstance.getCurrentSlide();
+									if (currentSlideElement && currentSlideElement.getAttribute('data-slide') === 'last') {
+										if (!confettiTriggered) {
+											console.log('🎉 TRIGGERING CONFETTI on hardcoded workshop end slide!');
+											confettiTriggered = true;
+											triggerConfetti();
+										}
+									} else {
+										// Reset confetti flag when leaving the last slide
+										confettiTriggered = false;
 									}
 								});
 							}
@@ -641,6 +641,9 @@
 			case 'last':
 				lastSlide();
 				break;
+			case 'second-to-last':
+				secondToLastSlide();
+				break;
 		}
 	}
 
@@ -653,6 +656,12 @@
 	function lastSlide() {
 		if (revealInstance) {
 			revealInstance.slide(totalSlides - 1);
+		}
+	}
+
+	function secondToLastSlide() {
+		if (revealInstance && totalSlides > 1) {
+			revealInstance.slide(totalSlides - 2);
 		}
 	}
 
@@ -1258,7 +1267,7 @@
 		bottom: 0;
 		left: 0;
 		right: 0;
-		height: 2px;
+		height: 3px;
 		background: rgba(178, 178, 162, 0.3);
 		z-index: 10000;
 	}

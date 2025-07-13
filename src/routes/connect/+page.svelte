@@ -21,6 +21,10 @@
 	let loadingLessons = false;
 	let showLessonSelection = false;
 	let upcomingWorkshops: any[] = [];
+	
+	// Long press state
+	let longPressTimer: NodeJS.Timeout;
+	let isLongPress = false;
 
 	onMount(async () => {
 		// Check if there's a session code in the URL (from QR code or manual entry)
@@ -76,9 +80,9 @@
 			// Load school data if workshop has a school reference
 			if (workshopData.school) {
 				try {
-					const school = await databases.getDocument('lessen', 'school', workshopData.school);
-					workshopData.schoolName = school.name;
-					console.log('🏫 Loaded school data:', { id: workshopData.school, name: school.name });
+					const school = await databases.getDocument('scholen', 'school', workshopData.school);
+					workshopData.schoolName = school.name || school.NAAM || 'Onbekende school';
+					console.log('🏫 Loaded school data:', { id: workshopData.school, name: workshopData.schoolName });
 				} catch (schoolError) {
 					console.error('Error loading school data:', schoolError);
 					workshopData.schoolName = 'Onbekende school';
@@ -170,9 +174,9 @@
 				// Load school data for the workshop
 				if (workshopData.school) {
 					try {
-						const school = await databases.getDocument('lessen', 'school', workshopData.school);
-						workshopData.schoolName = school.name;
-						console.log('🏫 Auto-loaded school data:', { id: workshopData.school, name: school.name });
+						const school = await databases.getDocument('scholen', 'school', workshopData.school);
+						workshopData.schoolName = school.name || school.NAAM || 'Onbekende school';
+						console.log('🏫 Auto-loaded school data:', { id: workshopData.school, name: workshopData.schoolName });
 					} catch (schoolError) {
 						console.error('Error auto-loading school data:', schoolError);
 						workshopData.schoolName = 'Onbekende school';
@@ -389,6 +393,44 @@
 		sendCommand('last');
 	}
 
+	// Long press handlers
+	function handleLongPressStart(action: 'prev' | 'next') {
+		isLongPress = false;
+		longPressTimer = setTimeout(() => {
+			isLongPress = true;
+			if (action === 'prev') {
+				firstSlide();
+			} else {
+				// Go to second-to-last slide (one before the last)
+				sendCommand('second-to-last');
+			}
+		}, 1000); // 1 second long press
+	}
+
+	function handleLongPressEnd(action: 'prev' | 'next') {
+		if (longPressTimer) {
+			clearTimeout(longPressTimer);
+		}
+		
+		// Only perform regular action if it wasn't a long press
+		if (!isLongPress) {
+			if (action === 'prev') {
+				prevSlide();
+			} else {
+				nextSlide();
+			}
+		}
+		
+		isLongPress = false;
+	}
+
+	function handleLongPressCancel() {
+		if (longPressTimer) {
+			clearTimeout(longPressTimer);
+		}
+		isLongPress = false;
+	}
+
 	async function disconnect() {
 		if (pollInterval) {
 			clearInterval(pollInterval);
@@ -414,28 +456,39 @@
 </script>
 
 <div class="container mx-auto p-6 max-w-md">
-	<div class="mb-6">
-		<h1 class="text-3xl font-bold text-primary mb-2">📱 Presentatie Controle</h1>
-		<p class="text-muted-foreground">Bedien je presentatie vanaf je telefoon</p>
-	</div>
 
 	{#if !isConnected}
 		<div class="bg-card rounded-lg border p-6 mb-6">
 			<h2 class="text-xl font-semibold mb-4">Verbinden met presentatie</h2>
 			
 					
-			{#if lessonData}
+			{#if workshopData}
 				<div class="mb-4 p-3 bg-primary/10 border border-primary/20 rounded-md">
-					<p class="text-primary text-sm font-medium">Les geladen: {lessonData.onderwerp}</p>
-					<p class="text-muted-foreground text-xs mt-1">Klaar om slides te verzenden naar presentatie</p>
-					{#if upcomingWorkshops.length > 0 && upcomingWorkshops.some(w => w.lessonId === lessonData.$id)}
-						<p class="text-warning text-xs mt-1">🚀 Auto-geselecteerd van lopende workshop</p>
-					{/if}
+					<div class="space-y-2">
+						<div class="text-sm">
+							{#if workshopData.schoolName}
+								<p class="text-muted-foreground">📍 {workshopData.schoolName}</p>
+							{/if}
+							{#if workshopData.group}
+								<p class="text-muted-foreground">👥 {workshopData.group}</p>
+							{/if}
+							{#if workshopData.start && workshopData.end}
+								<p class="text-muted-foreground text-xs">
+									⏰ {new Date(workshopData.start).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' })} - 
+									{new Date(workshopData.end).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' })}
+								</p>
+							{/if}
+						</div>
+						{#if lessonData}
+							<div class="mt-2 pt-2 border-t border-primary/20">
+								<p class="text-primary text-sm font-medium">{lessonData.onderwerp}</p>
+							</div>
+						{/if}
+					</div>
 				</div>
-			{:else if workshopData}
+			{:else if lessonData}
 				<div class="mb-4 p-3 bg-primary/10 border border-primary/20 rounded-md">
-					<p class="text-primary text-sm font-medium">Workshop geladen</p>
-					<p class="text-muted-foreground text-xs mt-1">Klaar om slides te verzenden naar presentatie</p>
+					<p class="text-primary text-sm font-medium">{lessonData.onderwerp}</p>
 				</div>
 			{/if}
 			
@@ -517,12 +570,29 @@
 				</div>
 			{/if}
 
-			{#if lessonData}
+			{#if workshopData}
 				<div class="bg-card rounded-lg border p-4 mb-4">
 					<div class="flex items-center justify-between">
-						<div>
-							<p class="text-primary text-sm font-medium">Les geladen: {lessonData.onderwerp}</p>
-							<p class="text-muted-foreground text-xs mt-1">Slides zijn verzonden naar presentatie</p>
+						<div class="space-y-2">
+							<div class="text-sm">
+								{#if workshopData.schoolName}
+									<p class="text-muted-foreground">📍 {workshopData.schoolName}</p>
+								{/if}
+								{#if workshopData.group}
+									<p class="text-muted-foreground">👥 {workshopData.group}</p>
+								{/if}
+								{#if workshopData.start && workshopData.end}
+									<p class="text-muted-foreground text-xs">
+										⏰ {new Date(workshopData.start).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' })} - 
+										{new Date(workshopData.end).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' })}
+									</p>
+								{/if}
+							</div>
+							{#if lessonData}
+								<div class="mt-2 pt-2 border-t border-muted">
+									<p class="text-primary text-sm font-medium">{lessonData.onderwerp}</p>
+								</div>
+							{/if}
 						</div>
 						<button 
 							class="bg-muted hover:bg-muted/80 text-foreground px-3 py-1 rounded-md text-xs font-medium transition-colors"
@@ -532,45 +602,34 @@
 						</button>
 					</div>
 				</div>
-			{:else if workshopData}
+			{:else if lessonData}
 				<div class="bg-card rounded-lg border p-4 mb-4">
-					<p class="text-primary text-sm font-medium">Workshop geladen</p>
-					<p class="text-muted-foreground text-xs mt-1">Slides zijn verzonden naar presentatie</p>
+					<div class="flex items-center justify-between">
+						<div>
+							<p class="text-primary text-sm font-medium">{lessonData.onderwerp}</p>
+						</div>
+						<button 
+							class="bg-muted hover:bg-muted/80 text-foreground px-3 py-1 rounded-md text-xs font-medium transition-colors"
+							on:click={clearLessonSelection}
+						>
+							Wijzig
+						</button>
+					</div>
 				</div>
 			{/if}
 
 
 			<div class="controls-layout">
-				<!-- Top row: Eerste and Laatste -->
-				<div class="grid grid-cols-2 gap-4 mb-4">
-					<button 
-						class="bg-muted hover:bg-muted/80 text-foreground border border-border p-3 rounded-lg flex flex-col items-center gap-2 font-medium transition-colors"
-						on:click={firstSlide}
-					>
-						<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-							<polygon points="11,19 2,12 11,5" />
-							<polygon points="22,19 13,12 22,5" />
-						</svg>
-						Eerste
-					</button>
-
-					<button 
-						class="bg-muted hover:bg-muted/80 text-foreground border border-border p-3 rounded-lg flex flex-col items-center gap-2 font-medium transition-colors"
-						on:click={lastSlide}
-					>
-						<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-							<polygon points="13,19 22,12 13,5" />
-							<polygon points="2,19 11,12 2,5" />
-						</svg>
-						Laatste
-					</button>
-				</div>
-
-				<!-- Bottom row: Vorige and Volgende - Fixed to bottom -->
+				<!-- Navigation buttons - Fixed to bottom -->
 				<div class="fixed-bottom-controls">
 					<button 
 						class="bg-primary hover:bg-primary/90 text-primary-foreground p-4 rounded-lg flex flex-col items-center gap-2 font-medium transition-colors"
-						on:click={prevSlide}
+						on:mousedown={() => handleLongPressStart('prev')}
+						on:mouseup={() => handleLongPressEnd('prev')}
+						on:mouseleave={handleLongPressCancel}
+						on:touchstart={() => handleLongPressStart('prev')}
+						on:touchend={() => handleLongPressEnd('prev')}
+						on:touchcancel={handleLongPressCancel}
 					>
 						<svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
 							<polygon points="15,18 9,12 15,6" />
@@ -580,7 +639,12 @@
 
 					<button 
 						class="bg-primary hover:bg-primary/90 text-primary-foreground p-4 rounded-lg flex flex-col items-center gap-2 font-medium transition-colors"
-						on:click={nextSlide}
+						on:mousedown={() => handleLongPressStart('next')}
+						on:mouseup={() => handleLongPressEnd('next')}
+						on:mouseleave={handleLongPressCancel}
+						on:touchstart={() => handleLongPressStart('next')}
+						on:touchend={() => handleLongPressEnd('next')}
+						on:touchcancel={handleLongPressCancel}
 					>
 						<svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
 							<polygon points="9,18 15,12 9,6" />
