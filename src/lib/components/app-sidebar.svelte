@@ -96,7 +96,7 @@
 		// PWA install detection
 		window.addEventListener('beforeinstallprompt', (e) => {
 			e.preventDefault();
-			deferredPrompt = e;
+			deferredPrompt = e as BeforeInstallPromptEvent;
 			showPwaInstall = true;
 		});
 
@@ -288,12 +288,12 @@
 							<MessageSquare size={16} />
 							Mededelingen
 						</a>
-						{#if showPwaInstall}
-							<button type="button" class="flex items-center gap-2 rounded px-3 py-2 text-sm text-foreground hover:bg-muted transition-colors w-full" on:click={handlePwaInstall}>
-								<GalleryVerticalEndIcon size={16} />
-								App installeren
-							</button>
-						{/if}
+					{/if}
+					{#if showPwaInstall}
+						<button type="button" class="flex items-center gap-2 rounded px-3 py-2 text-sm text-foreground hover:bg-muted transition-colors w-full" on:click={handlePwaInstall}>
+							<GalleryVerticalEndIcon size={16} />
+							App installeren
+						</button>
 					{/if}
 				</div>
 			</div>
