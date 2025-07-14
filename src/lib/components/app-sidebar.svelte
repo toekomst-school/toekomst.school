@@ -91,34 +91,74 @@
 		
 		document.addEventListener('click', handleClickOutside);
 		
-		return () => {
-			document.removeEventListener('click', handleClickOutside);
-		};
-
+		// PWA Debug logging
+		console.log('🔍 PWA Debug: Starting PWA detection...');
+		
 		// Detect if running as PWA (standalone)
 		const isStandalone = window.matchMedia('(display-mode: standalone)').matches || (window.navigator as any).standalone === true;
+		console.log('🔍 PWA Debug: Standalone detection:', {
+			mediaQuery: window.matchMedia('(display-mode: standalone)').matches,
+			navigatorStandalone: (window.navigator as any).standalone,
+			isStandalone
+		});
+		
 		if (isStandalone) {
+			console.log('🔍 PWA Debug: App is already installed (standalone mode)');
 			isInstalled = true;
 			isInstallable = false;
 			installButtonText = 'Geïnstalleerd';
+			console.log('🔍 PWA Debug: State updated - isInstalled:', isInstalled, 'isInstallable:', isInstallable, 'text:', installButtonText);
 			return;
 		}
 
 		// Listen for beforeinstallprompt
 		window.addEventListener('beforeinstallprompt', (e) => {
+			console.log('🔍 PWA Debug: beforeinstallprompt event fired!', e);
 			e.preventDefault();
 			deferredPrompt = e as BeforeInstallPromptEvent;
 			isInstallable = true;
 			isInstalled = false;
 			installButtonText = 'App installeren';
+			console.log('🔍 PWA Debug: State updated after beforeinstallprompt - isInstallable:', isInstallable, 'isInstalled:', isInstalled, 'text:', installButtonText);
 		});
 
 		// Listen for appinstalled
-		window.addEventListener('appinstalled', () => {
+		window.addEventListener('appinstalled', (e) => {
+			console.log(' PWA Debug: appinstalled event fired!', e);
 			isInstalled = true;
 			isInstallable = false;
 			installButtonText = 'Geïnstalleerd';
+			console.log('🔍 PWA Debug: State updated after appinstalled - isInstallable:', isInstallable, 'isInstalled:', isInstalled, 'text:', installButtonText);
 		});
+		
+		// Log initial state
+		console.log(' PWA Debug: Initial state - isInstallable:', isInstallable, 'isInstalled:', isInstalled, 'text:', installButtonText);
+		
+		// Check if service worker is registered
+		if ('serviceWorker' in navigator) {
+			navigator.serviceWorker.getRegistration().then(registration => {
+				console.log(' PWA Debug: Service Worker registration:', registration);
+			});
+		} else {
+			console.log(' PWA Debug: Service Worker not supported');
+		}
+		
+		// Check if manifest is accessible
+		fetch('/manifest.json')
+			.then(response => {
+				console.log('🔍 PWA Debug: Manifest fetch result:', response.status, response.ok);
+				return response.json();
+			})
+			.then(manifest => {
+				console.log('🔍 PWA Debug: Manifest content:', manifest);
+			})
+			.catch(error => {
+				console.log('🔍 PWA Debug: Manifest fetch error:', error);
+			});
+		
+		return () => {
+			document.removeEventListener('click', handleClickOutside);
+		};
 	});
 
 	function handleMenuClick() {
@@ -163,16 +203,25 @@
 	}
 
 	function handlePwaInstall() {
+		console.log(' PWA Debug: Install button clicked');
+		console.log(' PWA Debug: Current state - deferredPrompt:', !!deferredPrompt, 'isInstallable:', isInstallable, 'isInstalled:', isInstalled);
+		
 		if (deferredPrompt) {
+			console.log(' PWA Debug: Triggering install prompt...');
 			deferredPrompt.prompt();
 			deferredPrompt.userChoice.then((choiceResult: { outcome: 'accepted' | 'dismissed' }) => {
+				console.log(' PWA Debug: Install prompt result:', choiceResult);
 				if (choiceResult.outcome === 'accepted') {
+					console.log(' PWA Debug: Install accepted, updating state...');
 					isInstalled = true;
 					isInstallable = false;
 					installButtonText = 'Geïnstalleerd';
+					console.log('🔍 PWA Debug: State updated after install - isInstallable:', isInstallable, 'isInstalled:', isInstalled, 'text:', installButtonText);
 				}
 				deferredPrompt = null;
 			});
+		} else {
+			console.log('🔍 PWA Debug: No deferredPrompt available');
 		}
 	}
 </script>
@@ -310,6 +359,10 @@
 							<GalleryVerticalEndIcon size={16} />
 							{installButtonText}
 						</button>
+						<!-- Debug info -->
+						<div class="text-xs text-gray-500 mt-1">
+							Debug: Installable={isInstallable}, Installed={isInstalled}, HasPrompt={!!deferredPrompt}
+						</div>
 					{/if}
 				</div>
 			</div>
