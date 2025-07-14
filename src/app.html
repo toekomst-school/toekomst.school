@@ -1,9 +1,29 @@
 <!doctype html>
-<html lang="en">
+<html lang="nl">
 	<head>
 		<meta charset="utf-8" />
 		<link rel="icon" href="%sveltekit.assets%/favicon.png" />
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		
+		<!-- PWA Manifest -->
+		<link rel="manifest" href="/manifest.json" />
+		<meta name="theme-color" content="#3ba39b" />
+		<meta name="background-color" content="#1d1f20" />
+		
+		<!-- Apple PWA -->
+		<meta name="apple-mobile-web-app-capable" content="yes" />
+		<meta name="apple-mobile-web-app-status-bar-style" content="default" />
+		<meta name="apple-mobile-web-app-title" content="Toekomst School" />
+		<link rel="apple-touch-icon" href="/favicon.png" />
+		
+		<!-- Microsoft PWA -->
+		<meta name="msapplication-TileColor" content="#3ba39b" />
+		<meta name="msapplication-config" content="/browserconfig.xml" />
+		
+		<!-- PWA Description -->
+		<meta name="description" content="Planning en presentatie app voor Toekomst School - Bekijk je planning offline" />
+		<meta name="keywords" content="planning,school,presentatie,offline,toekomst" />
+		
 		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/4.5.0/reveal.min.css" />
 		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/4.5.0/theme/white.min.css" />
 		%sveltekit.head%

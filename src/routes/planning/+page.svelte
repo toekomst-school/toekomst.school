@@ -6,7 +6,7 @@
 	// import Interaction from '@event-calendar/interaction';
 	// @ts-ignore
 	import List from '@event-calendar/list';
-	import { writable, type Writable } from 'svelte/store';
+	import { writable } from 'svelte/store';
 	import { account, databases } from '$lib/appwrite';
 	import { onMount, afterUpdate } from 'svelte';
 	import { derived } from 'svelte/store';
@@ -132,34 +132,17 @@
 	];
 
 	// Remove static lessonOptions, replace with dynamic
-	/** @type {{ value: string, label: string }[]} */
 	let lessonOptions: { value: string; label: string }[] = [];
 	let schoolOptions: { value: string; label: string }[] = [];
-	/** @type {{ value: string, label: string }[]} */
 	let teacherOptions: { value: string; label: string }[] = [];
-	const groupOptions = [
-		{ value: 1, label: 'Groep 1' },
-		{ value: 2, label: 'Groep 2' },
-		{ value: 3, label: 'Groep 3' },
-		{ value: 4, label: 'Groep 4' },
-		{ value: 5, label: 'Groep 5' },
-		{ value: 6, label: 'Groep 6' },
-		{ value: 7, label: 'Groep 7' },
-		{ value: 8, label: 'Groep 8' },
-		{ value: 9, label: 'Brugklas' },
-		{ value: 10, label: 'Klas 2' },
-		{ value: 11, label: 'Klas 3' },
-		{ value: 12, label: 'Klas 4' },
-		{ value: 13, label: 'Klas 5' },
-		{ value: 14, label: 'Klas 6' }
-	];
-
+	
 	// Modal state for editing events
 	let showEditModal: boolean = false;
 	let editEvent: any = null;
 	let description: string = '';
 	let editEventStart: string = '';
 	let editEventEnd: string = '';
+	let eventSessions: any[] = [];
 
 	let showCreateModal: boolean = false;
 
@@ -186,6 +169,36 @@
 	let isAdmin: boolean = false;
 	let isVakdocent: boolean = false;
 	let currentTab: string = 'beschikbaar'; // 'beschikbaar', 'mijn-planning', or 'alle-workshops'
+	let currentCalendarView: string = 'dayGridMonth'; // Track current calendar view
+	let currentCalendarDate: Date = new Date(); // Track current date/week being viewed
+	let isUpdatingFromCallback: boolean = false; // Prevent infinite loops
+	
+	// Local state for filtered calendars to prevent reactive loops
+	let availableCalendarView: string = 'dayGridMonth';
+	let availableCalendarDate: Date = new Date();
+	let myCalendarView: string = 'dayGridMonth';
+	let myCalendarDate: Date = new Date();
+	
+	// Separate events arrays for each tab
+	let availableEvents: any[] = [];
+	let myEvents: any[] = [];
+	let allEvents: any[] = [];
+
+	// Update calendar view when currentCalendarView changes (but not from callbacks)
+	$: if (currentCalendarView && !isUpdatingFromCallback) {
+		options.update(opts => ({
+			...opts,
+			view: currentCalendarView
+		}));
+	}
+
+	// Update calendar date when currentCalendarDate changes (but not from callbacks)
+	$: if (currentCalendarDate && !isUpdatingFromCallback) {
+		options.update(opts => ({
+			...opts,
+			date: currentCalendarDate
+		}));
+	}
 
 	const databaseId = 'lessen';
 	const collectionId = 'planning';
@@ -208,24 +221,37 @@
 		materialen?: string;
 		description?: string;
 		length?: number;
+		workshopType?: 'single' | 'multi-session';
+		sessions?: Array<{
+			start: string;
+			end: string;
+			title?: string;
+			type: 'session' | 'break';
+			duration?: number;
+		}>;
+		totalDuration?: number;
 		extendedProps?: any;
 	}
 
 	interface CalendarOptions {
 		view: string;
+		date?: Date;
 		events: CalendarEvent[];
 		locale: string;
 		firstDay: number;
 		editable: boolean;
 		headerToolbar: any;
 		eventClick: (info: any) => void;
+		viewDidMount?: (info: any) => void;
+		datesSet?: (info: any) => void;
 		slotMinTime: string;
 		slotMaxTime: string;
 		eventContent: (info: any) => string | HTMLElement;
 	}
 
 	const options: Writable<CalendarOptions> = writable({
-		view: 'dayGridMonth',
+		view: currentCalendarView,
+		date: currentCalendarDate,
 		events: [], // Start empty, will be filled from Appwrite
 		locale: 'nl',
 		firstDay: 1,
@@ -233,9 +259,49 @@
 		headerToolbar: {
 			start: 'prev,next today',
 			center: 'title',
-			end: 'dayGridMonth,timeGridWeek,timeGridDay,listWeek'
+			end: window.innerWidth <= 768 ? 'listWeek,timeGridWeek,dayGridMonth' : 'dayGridMonth,timeGridWeek,listWeek'
+		},
+		buttonText: {
+			today: 'Vandaag',
+			dayGridMonth: 'Maand',
+			timeGridWeek: 'Week',
+			listWeek: 'Lijst'
 		},
 		eventClick: handleEventClick,
+		viewDidMount: (info) => {
+			// Update our tracked view when the calendar view changes
+			currentCalendarView = info.view.type;
+			
+			// Fetch data for the new view if we're on alle-workshops tab
+			if (currentTab === 'alle-workshops' && !isUpdatingFromCallback) {
+				isUpdatingFromCallback = true;
+				const dateRange = getDateRangeForView(currentCalendarDate, info.view.type);
+				fetchAllEvents(dateRange).then(() => {
+					options.update((current) => ({
+						...current,
+						events: allEvents
+					}));
+					setTimeout(() => { isUpdatingFromCallback = false; }, 100);
+				});
+			}
+		},
+		datesSet: (info) => {
+			// Update our tracked date when the calendar date range changes (prev/next navigation)
+			currentCalendarDate = new Date(info.view.currentStart);
+			
+			// Fetch data for the new date range if we're on alle-workshops tab
+			if (currentTab === 'alle-workshops' && !isUpdatingFromCallback) {
+				isUpdatingFromCallback = true;
+				const dateRange = getDateRangeForView(currentCalendarDate, currentCalendarView);
+				fetchAllEvents(dateRange).then(() => {
+					options.update((current) => ({
+						...current,
+						events: allEvents
+					}));
+					setTimeout(() => { isUpdatingFromCallback = false; }, 100);
+				});
+			}
+		},
 		// Restrict visible hours in timeGrid views
 		slotMinTime: '07:00:00',
 		slotMaxTime: '22:00:00',
@@ -254,39 +320,381 @@
 				const lessonOpt = lessonOptions.find((opt) => opt.value === event.extendedProps.lesson);
 				if (lessonOpt) lessonName = lessonOpt.label;
 			}
+			
 			// Build the display with line breaks
 			const parts = [];
 			if (time) parts.push(time);
 			if (schoolName) parts.push(schoolName);
 			if (lessonName) parts.push(lessonName);
+			
+			// Add multi-session indicator
+			if (event.extendedProps && event.extendedProps.workshopType === 'multi-session') {
+				const sessionCount = event.extendedProps.sessions ? 
+					event.extendedProps.sessions.filter(s => s.type === 'session').length : 0;
+				if (sessionCount > 1) {
+					parts.push(`📚 ${sessionCount} sessies`);
+				}
+			}
+			
 			// Return as HTML with <br/>
 			return { html: parts.join('<br/>') };
 		}
 	});
 
-	// Filtered event lists
-	import type { Readable } from 'svelte/store';
-	const myEvents: Readable<any[]> = derived(options, ($options: any) =>
-		($options.events as any[]).filter((ev: any) => ev.teacher === currentUserId)
-	);
-	const availableEvents: Readable<any[]> = derived(options, ($options: any) =>
-		($options.events as any[]).filter((ev: any) => !ev.teacher || ev.status === 'pending')
-	);
+	// Define the event click handler
+	function handleEventClick(info: any) {
+		console.log('=== EVENT CLICK DEBUG ===');
+		console.log('handleEventClick called with:', info);
+		console.log('handleEventClick: info.event:', info.event);
+		console.log('handleEventClick: info.event.id:', info.event.id);
+		console.log('handleEventClick: info.event.title:', info.event.title);
+		console.log('handleEventClick: info.event.start:', info.event.start);
+		console.log('handleEventClick: info.event.end:', info.event.end);
+		console.log('handleEventClick: info.event.extendedProps:', info.event.extendedProps);
+		console.log('handleEventClick: info.jsEvent:', info.jsEvent);
+		console.log('handleEventClick: info.view:', info.view);
+		console.log('=== END EVENT CLICK DEBUG ===');
+		openViewModal(info.event);
+	}
+	
+	// Separate callback handlers for filtered calendars to prevent reactive loops
+	let isUpdatingAvailableCalendar = false;
+	let isUpdatingMyCalendar = false;
+	
+	function handleAvailableViewDidMount(info: any) {
+		if (isUpdatingAvailableCalendar) return;
+		availableCalendarView = info.view.type;
+		// Fetch data for the new view
+		const dateRange = getDateRangeForView(availableCalendarDate, info.view.type);
+		isUpdatingAvailableCalendar = true;
+		fetchAvailableEvents(dateRange).then(() => {
+			createAvailableOptions();
+			setTimeout(() => { isUpdatingAvailableCalendar = false; }, 100);
+		});
+	}
+	
+	function handleAvailableDatesSet(info: any) {
+		if (isUpdatingAvailableCalendar) return;
+		availableCalendarDate = new Date(info.view.currentStart);
+		// Fetch data for the new date range
+		const dateRange = getDateRangeForView(availableCalendarDate, availableCalendarView);
+		isUpdatingAvailableCalendar = true;
+		fetchAvailableEvents(dateRange).then(() => {
+			createAvailableOptions();
+			setTimeout(() => { isUpdatingAvailableCalendar = false; }, 100);
+		});
+	}
+	
+	function handleMyViewDidMount(info: any) {
+		if (isUpdatingMyCalendar) return;
+		myCalendarView = info.view.type;
+		// Fetch data for the new view
+		const dateRange = getDateRangeForView(myCalendarDate, info.view.type);
+		isUpdatingMyCalendar = true;
+		fetchMyEvents(dateRange).then(() => {
+			createMyOptions();
+			setTimeout(() => { isUpdatingMyCalendar = false; }, 100);
+		});
+	}
+	
+	function handleMyDatesSet(info: any) {
+		if (isUpdatingMyCalendar) return;
+		myCalendarDate = new Date(info.view.currentStart);
+		// Fetch data for the new date range
+		const dateRange = getDateRangeForView(myCalendarDate, myCalendarView);
+		isUpdatingMyCalendar = true;
+		fetchMyEvents(dateRange).then(() => {
+			createMyOptions();
+			setTimeout(() => { isUpdatingMyCalendar = false; }, 100);
+		});
+	}
+
+	// Helper function to get date range for calendar view
+	function getDateRangeForView(currentDate: Date, view: string) {
+		const startOfRange = new Date(currentDate);
+		const endOfRange = new Date(currentDate);
+		
+		switch (view) {
+			case 'dayGridMonth':
+				// Get full month range
+				startOfRange.setDate(1);
+				startOfRange.setHours(0, 0, 0, 0);
+				endOfRange.setMonth(endOfRange.getMonth() + 1);
+				endOfRange.setDate(0);
+				endOfRange.setHours(23, 59, 59, 999);
+				break;
+			case 'timeGridWeek':
+				// Get week range (Monday to Sunday)
+				const dayOfWeek = startOfRange.getDay();
+				const daysFromMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+				startOfRange.setDate(startOfRange.getDate() - daysFromMonday);
+				startOfRange.setHours(0, 0, 0, 0);
+				endOfRange.setDate(startOfRange.getDate() + 6);
+				endOfRange.setHours(23, 59, 59, 999);
+				break;
+			case 'listWeek':
+				// Same as timeGridWeek for data fetching
+				const dayOfWeekList = startOfRange.getDay();
+				const daysFromMondayList = dayOfWeekList === 0 ? 6 : dayOfWeekList - 1;
+				startOfRange.setDate(startOfRange.getDate() - daysFromMondayList);
+				startOfRange.setHours(0, 0, 0, 0);
+				endOfRange.setDate(startOfRange.getDate() + 6);
+				endOfRange.setHours(23, 59, 59, 999);
+				break;
+			default:
+				// Default to month view
+				startOfRange.setDate(1);
+				startOfRange.setHours(0, 0, 0, 0);
+				endOfRange.setMonth(endOfRange.getMonth() + 1);
+				endOfRange.setDate(0);
+				endOfRange.setHours(23, 59, 59, 999);
+				break;
+		}
+		
+		return {
+			start: startOfRange.toISOString(),
+			end: endOfRange.toISOString()
+		};
+	}
+
+	// Data fetching functions with server-side filtering and date range
+	async function fetchAvailableEvents(dateRange?: {start: string, end: string}) {
+		try {
+			const queries = [
+				Query.or([
+					Query.equal('teacher', ''),
+					Query.isNull('teacher'),
+					Query.equal('status', 'pending')
+				])
+			];
+			
+			// Add date range filters if provided
+			if (dateRange) {
+				queries.push(Query.greaterThanEqual('start', dateRange.start));
+				queries.push(Query.lessThanEqual('start', dateRange.end));
+			}
+			
+			const res = await databases.listDocuments(databaseId, collectionId, queries);
+			availableEvents = res.documents.map(mapDocumentToEvent);
+		} catch (error) {
+			console.error('Failed to fetch available events:', error);
+			availableEvents = [];
+		}
+	}
+
+	async function fetchMyEvents(dateRange?: {start: string, end: string}) {
+		if (!currentUserId) {
+			myEvents = [];
+			return;
+		}
+		
+		try {
+			const queries = [
+				Query.equal('teacher', currentUserId)
+			];
+			
+			// Add date range filters if provided
+			if (dateRange) {
+				queries.push(Query.greaterThanEqual('start', dateRange.start));
+				queries.push(Query.lessThanEqual('start', dateRange.end));
+			}
+			
+			const res = await databases.listDocuments(databaseId, collectionId, queries);
+			myEvents = res.documents.map(mapDocumentToEvent);
+		} catch (error) {
+			console.error('Failed to fetch my events:', error);
+			myEvents = [];
+		}
+	}
+
+	async function fetchAllEvents(dateRange?: {start: string, end: string}) {
+		try {
+			const queries: any[] = [];
+			
+			// Add date range filters if provided
+			if (dateRange) {
+				queries.push(Query.greaterThanEqual('start', dateRange.start));
+				queries.push(Query.lessThanEqual('start', dateRange.end));
+			}
+			
+			const res = await databases.listDocuments(databaseId, collectionId, queries);
+			allEvents = res.documents.map(mapDocumentToEvent);
+		} catch (error) {
+			console.error('Failed to fetch all events:', error);
+			allEvents = [];
+		}
+	}
+
+	// Helper function to map document to event format
+	function mapDocumentToEvent(doc: any) {
+		return {
+			id: doc.$id,
+			title: doc.title || '',
+			start: String(doc.start),
+			end: String(doc.end),
+			color: doc.teacher ? 'var(--accent)' : 'var(--warning)',
+			status: doc.status || '',
+			teacher: doc.teacher ? String(doc.teacher) : '',
+			lesson: doc.lesson ? String(doc.lesson) : '',
+			school: doc.school ? String(doc.school) : '',
+			group: doc.group || '',
+			materialen: doc.materialen || '',
+			description: doc.description || '',
+			length: doc.length || 45,
+			extendedProps: {
+				id: doc.$id,
+				lesson: doc.lesson,
+				school: doc.school,
+				teacher: doc.teacher,
+				group: doc.group,
+				materialen: doc.materialen,
+				status: doc.status,
+				description: doc.description,
+				length: doc.length,
+				color: doc.teacher ? 'var(--accent)' : 'var(--warning)',
+				start: doc.start,
+				end: doc.end,
+				workshopType: doc.workshopType,
+				sessions: doc.sessions,
+				totalDuration: doc.totalDuration
+			}
+		};
+	}
+	
+	// Create separate options for each calendar to prevent reactive loops
+	let availableOptions: any = null;
+	let myOptions: any = null;
+	
+	// Function to create calendar options for each tab
+	function createAvailableOptions() {
+		availableOptions = {
+			view: availableCalendarView,
+			date: availableCalendarDate,
+			events: availableEvents,
+			locale: 'nl',
+			firstDay: 1,
+			editable: true,
+			headerToolbar: {
+				start: 'prev,next today',
+				center: 'title',
+				end: window.innerWidth <= 768 ? 'listWeek,timeGridWeek,dayGridMonth' : 'dayGridMonth,timeGridWeek,listWeek'
+			},
+			buttonText: {
+				today: 'Vandaag',
+				dayGridMonth: 'Maand',
+				timeGridWeek: 'Week',
+				listWeek: 'Lijst'
+			},
+			eventClick: handleEventClick,
+			viewDidMount: handleAvailableViewDidMount,
+			datesSet: handleAvailableDatesSet,
+			slotMinTime: '07:00:00',
+			slotMaxTime: '22:00:00',
+			eventContent: (info) => {
+				const time = info.timeText;
+				const event = info.event;
+				let schoolName = '';
+				let lessonName = '';
+				if (event.extendedProps && event.extendedProps.school) {
+					const schoolOpt = schoolOptions.find((opt) => opt.value === event.extendedProps.school);
+					if (schoolOpt) schoolName = schoolOpt.label;
+				}
+				if (event.extendedProps && event.extendedProps.lesson) {
+					const lessonOpt = lessonOptions.find((opt) => opt.value === event.extendedProps.lesson);
+					if (lessonOpt) lessonName = lessonOpt.label;
+				}
+				
+				const parts = [];
+				if (time) parts.push(time);
+				if (schoolName) parts.push(schoolName);
+				if (lessonName) parts.push(lessonName);
+				
+				if (event.extendedProps && event.extendedProps.workshopType === 'multi-session') {
+					const sessionCount = event.extendedProps.sessions ? 
+						event.extendedProps.sessions.filter(s => s.type === 'session').length : 0;
+					if (sessionCount > 1) {
+						parts.push(`📚 ${sessionCount} sessies`);
+					}
+				}
+				
+				return { html: parts.join('<br/>') };
+			}
+		};
+	}
+	
+	function createMyOptions() {
+		myOptions = {
+			view: myCalendarView,
+			date: myCalendarDate,
+			events: myEvents,
+			locale: 'nl',
+			firstDay: 1,
+			editable: true,
+			headerToolbar: {
+				start: 'prev,next today',
+				center: 'title',
+				end: window.innerWidth <= 768 ? 'listWeek,timeGridWeek,dayGridMonth' : 'dayGridMonth,timeGridWeek,listWeek'
+			},
+			buttonText: {
+				today: 'Vandaag',
+				dayGridMonth: 'Maand',
+				timeGridWeek: 'Week',
+				listWeek: 'Lijst'
+			},
+			eventClick: handleEventClick,
+			viewDidMount: handleMyViewDidMount,
+			datesSet: handleMyDatesSet,
+			slotMinTime: '07:00:00',
+			slotMaxTime: '22:00:00',
+			eventContent: (info) => {
+				const time = info.timeText;
+				const event = info.event;
+				let schoolName = '';
+				let lessonName = '';
+				if (event.extendedProps && event.extendedProps.school) {
+					const schoolOpt = schoolOptions.find((opt) => opt.value === event.extendedProps.school);
+					if (schoolOpt) schoolName = schoolOpt.label;
+				}
+				if (event.extendedProps && event.extendedProps.lesson) {
+					const lessonOpt = lessonOptions.find((opt) => opt.value === event.extendedProps.lesson);
+					if (lessonOpt) lessonName = lessonOpt.label;
+				}
+				
+				const parts = [];
+				if (time) parts.push(time);
+				if (schoolName) parts.push(schoolName);
+				if (lessonName) parts.push(lessonName);
+				
+				if (event.extendedProps && event.extendedProps.workshopType === 'multi-session') {
+					const sessionCount = event.extendedProps.sessions ? 
+						event.extendedProps.sessions.filter(s => s.type === 'session').length : 0;
+					if (sessionCount > 1) {
+						parts.push(`📚 ${sessionCount} sessies`);
+					}
+				}
+				
+				return { html: parts.join('<br/>') };
+			}
+		};
+	}
 
 	let showViewModal: boolean = false;
 	let viewEvent: any = null;
+	let showIcalModal: boolean = false;
 
-	// Add a derived store for all events
-	const allEvents: Readable<any[]> = derived(options, ($options) => $options.events);
+
+
 
 	// Set currentTab based on hash
-	function setTabFromHash() {
+	async function setTabFromHash() {
 		const hash = window.location.hash.replace('#', '');
 		if (hash === 'beschikbaar' || hash === 'mijn-planning' || hash === 'alle-workshops') {
 			currentTab = hash;
 		} else {
 			currentTab = 'beschikbaar';
 		}
+		// Load data for the new tab
+		await loadCurrentTabData();
 	}
 
 	onMount(() => {
@@ -294,6 +702,31 @@
 		window.addEventListener('hashchange', setTabFromHash);
 		return () => window.removeEventListener('hashchange', setTabFromHash);
 	});
+
+	// Function to load data for the current tab
+	async function loadCurrentTabData() {
+		switch (currentTab) {
+			case 'beschikbaar':
+				const availableDateRange = getDateRangeForView(availableCalendarDate, availableCalendarView);
+				await fetchAvailableEvents(availableDateRange);
+				createAvailableOptions();
+				break;
+			case 'mijn-planning':
+				const myDateRange = getDateRangeForView(myCalendarDate, myCalendarView);
+				await fetchMyEvents(myDateRange);
+				createMyOptions();
+				break;
+			case 'alle-workshops':
+				const allDateRange = getDateRangeForView(currentCalendarDate, currentCalendarView);
+				await fetchAllEvents(allDateRange);
+				// Update main options for alle-workshops tab
+				options.update((current) => ({
+					...current,
+					events: allEvents
+				}));
+				break;
+		}
+	}
 
 	onMount(async () => {
 		try {
@@ -326,40 +759,9 @@
 			currentUserLabels = user.labels || [];
 			isAdmin = currentUserLabels.includes('admin');
 			isVakdocent = currentUserLabels.includes('vakdocent');
-			// Fetch events from Appwrite
-			const res = await databases.listDocuments(databaseId, collectionId);
-			options.update((current) => ({
-				...current,
-				events: res.documents.map((doc) => ({
-					id: doc.$id,
-					title: doc.title || '',
-					start: String(doc.start),
-					end: String(doc.end),
-					color: doc.teacher ? 'var(--accent)' : 'var(--warning)',
-					status: doc.status || '',
-					teacher: doc.teacher ? String(doc.teacher) : '',
-					lesson: doc.lesson ? String(doc.lesson) : '',
-					school: doc.school ? String(doc.school) : '',
-					group: doc.group || '',
-					materialen: doc.materialen || '',
-					description: doc.description || '',
-					length: doc.length || 45,
-					extendedProps: {
-						id: doc.$id,
-						lesson: doc.lesson,
-						school: doc.school,
-						teacher: doc.teacher,
-						group: doc.group,
-						materialen: doc.materialen,
-						status: doc.status,
-						description: doc.description,
-						length: doc.length,
-						color: doc.teacher ? 'var(--accent)' : 'var(--warning)',
-						start: doc.start,
-						end: doc.end
-					}
-				}))
-			}));
+			
+			// Load data for the current tab
+			await loadCurrentTabData();
 		} catch (e) {
 			currentUserId = '';
 			currentUserLabels = [];
@@ -405,6 +807,18 @@
 		lessonLength = event.length || 45;
 		materialen = event.materialen || '';
 		status = event.status || 'pending';
+		
+		// Parse sessions from JSON string
+		eventSessions = [];
+		if (event.sessions) {
+			try {
+				eventSessions = typeof event.sessions === 'string' ? JSON.parse(event.sessions) : event.sessions;
+			} catch (e) {
+				console.error('Error parsing sessions:', e);
+				eventSessions = [];
+			}
+		}
+		
 		showEditModal = true;
 	}
 	function closeEditModal() {
@@ -429,30 +843,51 @@
 	async function submitEditEvent(e: any) {
 		if (e && e.preventDefault) e.preventDefault();
 		if (!editEvent) return;
-		const totalMinutes = Number(lessonLength);
-		// Calculate end time properly without timezone conversion
-		const startDate = new Date(editEventStart);
-		const endDate = new Date(startDate.getTime() + totalMinutes * 60000);
-		const end = endDate.getFullYear() + '-' + 
-			String(endDate.getMonth() + 1).padStart(2, '0') + '-' + 
-			String(endDate.getDate()).padStart(2, '0') + 'T' + 
-			String(endDate.getHours()).padStart(2, '0') + ':' + 
-			String(endDate.getMinutes()).padStart(2, '0');
+		
+		// Handle both single and multi-session workshops
+		const formData = e.detail;
+		console.log('Editing workshop with data:', formData);
+		const workshopType = formData.workshopType || 'single';
+		
+		let endTime: string;
+		let totalMinutes: number;
+		
+		if (workshopType === 'single') {
+			totalMinutes = Number(formData.lessonLength);
+			const startDate = new Date(formData.editEventStart);
+			const endDate = new Date(startDate.getTime() + totalMinutes * 60000);
+			endTime = endDate.getFullYear() + '-' + 
+				String(endDate.getMonth() + 1).padStart(2, '0') + '-' + 
+				String(endDate.getDate()).padStart(2, '0') + 'T' + 
+				String(endDate.getHours()).padStart(2, '0') + ':' + 
+				String(endDate.getMinutes()).padStart(2, '0');
+		} else {
+			// For multi-session, use the end time of the last session
+			const lastSession = formData.sessions[formData.sessions.length - 1];
+			endTime = lastSession.end;
+			totalMinutes = formData.totalDuration;
+		}
+		
 		// Only send fields that are part of the Appwrite schema (do not spread ...editEvent)
 		const updatedEvent = {
-			description,
-			start: editEventStart, // Use local time string
-			end: end, // Use local time string
-			lesson: selectedLesson ? String(selectedLesson.value) : '',
-			school: selectedSchool ? String(selectedSchool.value) : '',
-			group: selectedGroup,
-			teacher: selectedTeacher ? String(selectedTeacher.value) : '',
-			length: lessonLength,
-			materialen,
-			status: selectedTeacher && selectedTeacher.value ? 'confirmed' : 'pending'
+			description: formData.description || '',
+			start: formData.editEventStart,
+			end: endTime,
+			lesson: formData.selectedLesson ? String(formData.selectedLesson) : '',
+			school: formData.selectedSchool ? String(formData.selectedSchool) : '',
+			group: formData.selectedGroup || '',
+			teacher: formData.selectedTeacher ? String(formData.selectedTeacher) : '',
+			length: totalMinutes,
+			materialen: formData.materialen || '',
+			status: formData.selectedTeacher ? 'confirmed' : 'pending',
+			workshopType: workshopType,
+			sessions: workshopType === 'multi-session' ? JSON.stringify(formData.sessions) : JSON.stringify([]),
+			totalDuration: formData.totalDuration || totalMinutes
 		};
+		console.log('Updating event with ID:', editEvent.id, 'Data:', updatedEvent);
 		try {
 			await databases.updateDocument(databaseId, collectionId, editEvent.id, updatedEvent);
+			console.log('Successfully updated workshop');
 			options.update((current) => ({
 				...current,
 				events: current.events.map((ev) =>
@@ -462,10 +897,11 @@
 			if (calendarRef && typeof calendarRef.updateEvent === 'function') {
 				calendarRef.updateEvent({ ...editEvent, ...updatedEvent });
 			}
+			closeEditModal();
 		} catch (e) {
 			console.error('Failed to update event:', e);
+			// Don't close modal on error so user can retry
 		}
-		closeEditModal();
 	}
 
 	function openCreateModal() {
@@ -501,29 +937,50 @@
 
 	async function submitCreateEvent(e: any) {
 		if (e && e.preventDefault) e.preventDefault();
-		const totalMinutes = Number(lessonLength);
-		// Calculate end time properly without timezone conversion
-		const startDate = new Date(editEventStart);
-		const endDate = new Date(startDate.getTime() + totalMinutes * 60000);
-		const end = endDate.getFullYear() + '-' + 
-			String(endDate.getMonth() + 1).padStart(2, '0') + '-' + 
-			String(endDate.getDate()).padStart(2, '0') + 'T' + 
-			String(endDate.getHours()).padStart(2, '0') + ':' + 
-			String(endDate.getMinutes()).padStart(2, '0');
+		
+		// Handle both single and multi-session workshops
+		const formData = e.detail;
+		console.log('Creating workshop with data:', formData);
+		const workshopType = formData.workshopType || 'single';
+		
+		let endTime: string;
+		let totalMinutes: number;
+		
+		if (workshopType === 'single') {
+			totalMinutes = Number(formData.lessonLength);
+			const startDate = new Date(formData.editEventStart);
+			const endDate = new Date(startDate.getTime() + totalMinutes * 60000);
+			endTime = endDate.getFullYear() + '-' + 
+				String(endDate.getMonth() + 1).padStart(2, '0') + '-' + 
+				String(endDate.getDate()).padStart(2, '0') + 'T' + 
+				String(endDate.getHours()).padStart(2, '0') + ':' + 
+				String(endDate.getMinutes()).padStart(2, '0');
+		} else {
+			// For multi-session, use the end time of the last session
+			const lastSession = formData.sessions[formData.sessions.length - 1];
+			endTime = lastSession.end;
+			totalMinutes = formData.totalDuration;
+		}
+		
 		const newEvent = {
-			description,
-			start: editEventStart, // Use local time string
-			end: end, // Use local time string
-			lesson: selectedLesson ? String(selectedLesson.value) : '',
-			school: selectedSchool ? String(selectedSchool.value) : '',
-			group: selectedGroup,
-			teacher: selectedTeacher ? String(selectedTeacher.value) : '',
-			length: lessonLength,
-			materialen,
-			status: selectedTeacher && selectedTeacher.value ? 'confirmed' : 'pending'
+			description: formData.description || '',
+			start: formData.editEventStart,
+			end: endTime,
+			lesson: formData.selectedLesson ? String(formData.selectedLesson) : '',
+			school: formData.selectedSchool ? String(formData.selectedSchool) : '',
+			group: formData.selectedGroup || '',
+			teacher: formData.selectedTeacher ? String(formData.selectedTeacher) : '',
+			length: totalMinutes,
+			materialen: formData.materialen || '',
+			status: formData.selectedTeacher ? 'confirmed' : 'pending',
+			workshopType: workshopType,
+			sessions: workshopType === 'multi-session' ? JSON.stringify(formData.sessions) : JSON.stringify([]),
+			totalDuration: formData.totalDuration || totalMinutes
 		};
+		console.log('Creating event with data:', newEvent);
 		try {
 			const doc = await databases.createDocument(databaseId, collectionId, 'unique()', newEvent);
+			console.log('Successfully created workshop:', doc);
 			// Ensure the event added to the store matches the structure from Appwrite fetch
 			const eventForStore = {
 				id: doc.$id,
@@ -557,22 +1014,13 @@
 				...current,
 				events: [...current.events, eventForStore]
 			}));
+			closeCreateModal();
 		} catch (e) {
 			console.error('Failed to create event:', e);
+			// Don't close modal on error so user can retry
 		}
-		closeCreateModal();
 	}
 
-	/**
-	 * @param {object} info
-	 * @property {object} info.el - The HTML element for the event
-	 * @property {object} info.event - The associated Event object
-	 * @property {object} info.jsEvent - The native JS event
-	 * @property {object} info.view - The current View object
-	 */
-	function handleEventClick(info: any) {
-		openViewModal(info.event);
-	}
 
 	async function openViewModal(event: any) {
 		const props = event.extendedProps || event;
@@ -597,6 +1045,22 @@
 				console.error('Failed to fetch school data for view modal:', e);
 			}
 		}
+		// Parse sessions from JSON string if needed
+		let parsedSessions = [];
+		console.log('openViewModal: props.sessions (raw):', props.sessions);
+		console.log('openViewModal: props.sessions type:', typeof props.sessions);
+		if (props.sessions) {
+			try {
+				parsedSessions = typeof props.sessions === 'string' ? JSON.parse(props.sessions) : props.sessions;
+				console.log('openViewModal: parsedSessions:', parsedSessions);
+			} catch (e) {
+				console.error('Error parsing sessions for view:', e);
+				parsedSessions = [];
+			}
+		} else {
+			console.log('openViewModal: No sessions found in props');
+		}
+		
 		viewEvent = {
 			...props,
 			id: workshopId,
@@ -606,9 +1070,12 @@
 			schoolId: props.school,
 			teacherName: teacherOpt ? teacherOpt.label : '-',
 			teacherId: props.teacher,
-			schoolData
+			schoolData,
+			sessions: parsedSessions
 		};
-		console.log('viewEvent for modal:', viewEvent);
+		console.log('viewEvent for modal (full object):', viewEvent);
+		console.log('viewEvent.sessions:', viewEvent.sessions);
+		console.log('viewEvent.workshopType:', viewEvent.workshopType);
 		
 		// Update the URL with the event id and current tab, without reloading
 		const eventId = viewEvent.id || viewEvent.$id;
@@ -621,7 +1088,9 @@
 		} else {
 			console.warn('No event ID found for URL update');
 		}
+		console.log('openViewModal: About to set showViewModal = true');
 		showViewModal = true;
+		console.log('openViewModal: showViewModal is now:', showViewModal);
 	}
 	let isClosingModal = false; // Flag to prevent reactive reopening
 	
@@ -648,10 +1117,10 @@
 		// Find the event in the current events list by id (viewEvent.id or viewEvent.$id)
 		let eventId = currentViewEvent.id || currentViewEvent.$id;
 		let event = null;
-		// Try to find in $myEvents and $availableEvents
-		if ($myEvents) event = $myEvents.find((ev) => ev.id === eventId || ev.$id === eventId);
-		if (!event && $availableEvents)
-			event = $availableEvents.find((ev) => ev.id === eventId || ev.$id === eventId);
+		// Try to find in filtered events
+		if (myEvents) event = myEvents.find((ev) => ev.id === eventId || ev.$id === eventId);
+		if (!event && availableEvents)
+			event = availableEvents.find((ev) => ev.id === eventId || ev.$id === eventId);
 		if (!event) event = currentViewEvent; // fallback
 		openEditModal(event);
 	}
@@ -722,74 +1191,131 @@
 			alert('Kon workshop niet accepteren. Probeer opnieuw.');
 		}
 	}
+
+	function openIcalModal() {
+		showIcalModal = true;
+	}
+
+	function closeIcalModal() {
+		showIcalModal = false;
+	}
 </script>
 
-<div style="display: flex; justify-content: flex-end; margin-bottom: 1rem; gap: 1rem;">
-	<button
-		type="button"
-		class="tab-btn"
-		class:active-tab={currentTab === 'beschikbaar'}
-		on:click={() => {
-			currentTab = 'beschikbaar';
-			const currentId = $page.url.searchParams.get('id');
-			const url = currentId ? `/planning?id=${currentId}#beschikbaar` : '/planning#beschikbaar';
-			goto(url, { replaceState: true, keepfocus: true, noscroll: true });
-		}}>Beschikbaar</button
-	>
-	<button
-		type="button"
-		class="tab-btn"
-		class:active-tab={currentTab === 'mijn-planning'}
-		on:click={() => {
-			currentTab = 'mijn-planning';
-			const currentId = $page.url.searchParams.get('id');
-			const url = currentId ? `/planning?id=${currentId}#mijn-planning` : '/planning#mijn-planning';
-			goto(url, { replaceState: true, keepfocus: true, noscroll: true });
-		}}>Mijn planning</button
-	>
+<!-- Top right buttons -->
+<div class="top-right-buttons">
 	{#if isAdmin}
+		<button type="button" class="add-workshop-btn-mobile" on:click={openCreateModal}>
+			<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+				<line x1="12" y1="5" x2="12" y2="19"/>
+				<line x1="5" y1="12" x2="19" y2="12"/>
+			</svg>
+		</button>
+	{/if}
+	<button 
+		class="ical-btn"
+		on:click={openIcalModal}
+		aria-label="iCal feed instructies"
+	>
+		<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+			<rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
+			<line x1="16" y1="2" x2="16" y2="6"/>
+			<line x1="8" y1="2" x2="8" y2="6"/>
+			<line x1="3" y1="10" x2="21" y2="10"/>
+		</svg>
+	</button>
+</div>
+
+<div class="tab-container">
+	<div class="tab-buttons">
 		<button
 			type="button"
 			class="tab-btn"
-			class:active-tab={currentTab === 'alle-workshops'}
-			on:click={() => {
-				currentTab = 'alle-workshops';
+			class:active-tab={currentTab === 'beschikbaar'}
+			on:click={async () => {
+				currentTab = 'beschikbaar';
 				const currentId = $page.url.searchParams.get('id');
-				const url = currentId ? `/planning?id=${currentId}#alle-workshops` : '/planning#alle-workshops';
+				const url = currentId ? `/planning?id=${currentId}#beschikbaar` : '/planning#beschikbaar';
 				goto(url, { replaceState: true, keepfocus: true, noscroll: true });
-			}}>Alle workshops</button
+				await loadCurrentTabData();
+			}}>Beschikbaar</button
 		>
+		<button
+			type="button"
+			class="tab-btn"
+			class:active-tab={currentTab === 'mijn-planning'}
+			on:click={async () => {
+				currentTab = 'mijn-planning';
+				const currentId = $page.url.searchParams.get('id');
+				const url = currentId ? `/planning?id=${currentId}#mijn-planning` : '/planning#mijn-planning';
+				goto(url, { replaceState: true, keepfocus: true, noscroll: true });
+				await loadCurrentTabData();
+			}}>Mijn planning</button
+		>
+		{#if isAdmin}
+			<button
+				type="button"
+				class="tab-btn"
+				class:active-tab={currentTab === 'alle-workshops'}
+				on:click={async () => {
+					currentTab = 'alle-workshops';
+					const currentId = $page.url.searchParams.get('id');
+					const url = currentId ? `/planning?id=${currentId}#alle-workshops` : '/planning#alle-workshops';
+					goto(url, { replaceState: true, keepfocus: true, noscroll: true });
+					await loadCurrentTabData();
+				}}>Alle workshops</button
+			>
+		{/if}
+	</div>
+	{#if isAdmin}
 		<button type="button" class="add-workshop-btn" on:click={openCreateModal}
-			>+ Workshop toevoegen</button
+			>+ Workshop</button
 		>
 	{/if}
 </div>
 
 {#if isAdmin && currentTab === 'alle-workshops'}
-	<Calendar
-		bind:this={calendarRef}
-		key={calendarKey + '-alle'}
-		plugins={[TimeGrid, DayGrid, List]}
-		options={{ ...$options, events: $options.events }}
-	/>
+	<div class="calendar-container">
+		<Calendar
+			bind:this={calendarRef}
+			key={calendarKey + '-alle'}
+			plugins={[TimeGrid, DayGrid, List]}
+			options={$options}
+		/>
+	</div>
 {/if}
 {#if currentTab === 'beschikbaar'}
 	<!-- Beschikbare events calendar only -->
-	<Calendar
-		bind:this={calendarRef}
-		key={calendarKey + '-beschikbaar'}
-		plugins={[TimeGrid, DayGrid, List]}
-		options={{ ...$options, events: $availableEvents }}
-	/>
+	<div class="calendar-container">
+		{#if availableOptions}
+			{console.log('=== RENDERING AVAILABLE CALENDAR ===', availableOptions)}
+			{console.log('Available calendar events:', availableOptions.events)}
+			{console.log('Available calendar eventClick:', availableOptions.eventClick)}
+			{console.log('=== END AVAILABLE CALENDAR RENDER ===', '')}
+			<Calendar
+				bind:this={calendarRef}
+				key={calendarKey + '-beschikbaar'}
+				plugins={[TimeGrid, DayGrid, List]}
+				options={availableOptions}
+			/>
+		{/if}
+	</div>
 {/if}
 {#if currentTab === 'mijn-planning'}
 	<!-- Mijn planning calendar -->
-	<Calendar
-		bind:this={calendarRef}
-		key={calendarKey + '-mijn'}
-		plugins={[TimeGrid, DayGrid, List]}
-		options={{ ...$options, events: $myEvents }}
-	/>
+	<div class="calendar-container">
+		{#if myOptions}
+			{console.log('=== RENDERING MY CALENDAR ===', myOptions)}
+			{console.log('My calendar events:', myOptions.events)}
+			{console.log('My calendar eventClick:', myOptions.eventClick)}
+			{console.log('=== END MY CALENDAR RENDER ===', '')}
+			<Calendar
+				bind:this={calendarRef}
+				key={calendarKey + '-mijn'}
+				plugins={[TimeGrid, DayGrid, List]}
+				options={myOptions}
+			/>
+		{/if}
+	</div>
 {/if}
 
 {#if showEditModal}
@@ -798,7 +1324,6 @@
 		<WorkshopForm
 			{lessonOptions}
 			{schoolOptions}
-			{groupOptions}
 			{teacherOptions}
 			{statusOptions}
 			isEdit={true}
@@ -811,7 +1336,10 @@
 				materialen,
 				status,
 				description,
-				start: editEventStart
+				start: editEventStart,
+				workshopType: eventSessions.length > 0 ? 'multi-session' : 'single',
+				sessions: eventSessions,
+				totalDuration: editEvent?.totalDuration || 0
 			}}
 			bind:selectedLesson
 			bind:selectedSchool
@@ -834,7 +1362,6 @@
 		<WorkshopForm
 			{lessonOptions}
 			{schoolOptions}
-			{groupOptions}
 			{teacherOptions}
 			{statusOptions}
 			isEdit={false}
@@ -868,6 +1395,81 @@
 	</div>
 {/if}
 
+{#if showIcalModal}
+	<div class="modal-backdrop" on:click={closeIcalModal}></div>
+	<div class="modal ical-modal" on:click|stopPropagation>
+		<div class="modal-header">
+			<h2>📅 Kalender Synchronisatie</h2>
+			<button class="close-btn" on:click={closeIcalModal}>
+				<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+					<line x1="18" y1="6" x2="6" y2="18"/>
+					<line x1="6" y1="6" x2="18" y2="18"/>
+				</svg>
+			</button>
+		</div>
+		
+		<div class="ical-content">
+			<p>Voeg de planning toe aan je eigen kalender app:</p>
+			
+			<div class="ical-url-container">
+				<label for="ical-url">iCal Feed URL:</label>
+				<div class="url-input-group">
+					<input 
+						id="ical-url"
+						type="text" 
+						value="{window.location.origin}/planning.ics"
+						readonly
+						class="ical-url-input"
+					/>
+					<button 
+						class="copy-btn"
+						on:click={() => {
+							navigator.clipboard.writeText(`${window.location.origin}/planning.ics`);
+							alert('URL gekopieerd naar klembord!');
+						}}
+					>
+						Kopieer
+					</button>
+				</div>
+			</div>
+			
+			<div class="instructions">
+				<h3>Instructies per kalender app:</h3>
+				
+				<div class="instruction-item">
+					<h4>📱 iPhone/iPad (Kalender app)</h4>
+					<ol>
+						<li>Open de Kalender app</li>
+						<li>Ga naar Instellingen → Kalenders → Account toevoegen</li>
+						<li>Kies "Andere" → "Agenda toevoegen"</li>
+						<li>Plak de URL hierboven</li>
+					</ol>
+				</div>
+				
+				<div class="instruction-item">
+					<h4>📧 Outlook</h4>
+					<ol>
+						<li>Open Outlook</li>
+						<li>Ga naar Kalender → "Kalender toevoegen"</li>
+						<li>Kies "Van internet"</li>
+						<li>Plak de URL hierboven</li>
+					</ol>
+				</div>
+				
+				<div class="instruction-item">
+					<h4>🌐 Google Calendar</h4>
+					<ol>
+						<li>Open Google Calendar</li>
+						<li>Klik op "+" naast "Andere agenda's"</li>
+						<li>Kies "Van URL"</li>
+						<li>Plak de URL hierboven</li>
+					</ol>
+				</div>
+			</div>
+		</div>
+	</div>
+{/if}
+
 <style>
 	.modal-backdrop {
 		position: fixed;
@@ -897,14 +1499,23 @@
 		flex-direction: column;
 		gap: 1.5rem;
 	}
-	@media (max-width: 600px) {
+	@media (max-width: 768px) {
 		.modal {
-			padding: 1.25rem 0.5rem;
+			padding: 1rem;
 			min-width: 0;
+			width: 95vw;
+			max-height: 90vh;
+			top: 5vh;
+			transform: translate(-50%, 0);
+		}
+	}
+	
+	@media (max-width: 480px) {
+		.modal {
+			padding: 0.75rem;
 			width: 98vw;
 			max-height: 95vh;
 			top: 2.5vh;
-			transform: translate(-50%, 0);
 		}
 	}
 	.modal form {
@@ -987,19 +1598,85 @@
 		background: var(--warning);
 		color: var(--color-blackened-steel);
 	}
+	.tab-container {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		margin-bottom: 1rem;
+		gap: 1rem;
+		flex-wrap: wrap;
+	}
+	
+	.tab-buttons {
+		display: flex;
+		gap: 0.5rem;
+		flex-wrap: wrap;
+		flex: 1;
+	}
+	
 	.tab-btn {
 		background: var(--ash-grey);
 		color: var(--accent);
 		border: none;
 		border-radius: var(--radius);
-		padding: 0.5rem 1rem;
-		font-size: 1rem;
+		padding: 0 0.5rem;
+		font-size: 0.8rem;
 		cursor: pointer;
 		transition: background 0.2s;
+		white-space: nowrap;
+		flex: 1;
+		min-width: fit-content;
+		height: 2rem;
+		display: flex;
+		align-items: center;
+		justify-content: center;
 	}
+	
 	.tab-btn.active-tab {
 		background: var(--accent);
 		color: #fff;
+	}
+	
+	@media (max-width: 768px) {
+		.tab-container {
+			position: fixed;
+			bottom: 0;
+			left: 0;
+			right: 0;
+			background: var(--background);
+			border-top: 1px solid var(--border);
+			padding: 1rem 0.75rem 1rem 0.75rem;
+			z-index: 10;
+			box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.1);
+			flex-direction: column;
+			gap: 0.75rem;
+		}
+		
+		.tab-buttons {
+			display: flex;
+			gap: 0.5rem;
+			width: 100%;
+		}
+		
+		.tab-btn {
+			font-size: 0.75rem;
+			padding: 0 0.4rem;
+			height: 1.75rem;
+		}
+		
+		.add-workshop-btn {
+			font-size: 0.8rem;
+			padding: 0.4rem 0.8rem;
+			height: 1.75rem;
+			white-space: nowrap;
+			width: 100%;
+			order: -1;
+		}
+		
+		/* Add bottom padding to main content to prevent overlap */
+		:global(body) {
+			padding-bottom: 6.5rem;
+		}
 	}
 	.event-list {
 		margin-top: 1rem;
@@ -1023,5 +1700,247 @@
 	.claim-btn:hover {
 		background: var(--warning);
 		color: var(--color-blackened-steel);
+	}
+	
+	.top-right-buttons {
+		position: absolute;
+		top: 0.5rem;
+		right: 1rem;
+		display: flex;
+		gap: 0.5rem;
+		z-index: 5;
+	}
+	
+	.ical-btn {
+		background: none;
+		color: var(--foreground);
+		border: none;
+		padding: 0.5rem;
+		cursor: pointer;
+		transition: all 0.2s;
+	}
+	
+	.ical-btn:hover {
+		color: var(--accent);
+		transform: scale(1.1);
+	}
+	
+	.add-workshop-btn-mobile {
+		background: var(--accent);
+		color: white;
+		border: none;
+		padding: 0.5rem;
+		border-radius: 50%;
+		cursor: pointer;
+		transition: all 0.2s;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 40px;
+		height: 40px;
+	}
+	
+	.add-workshop-btn-mobile:hover {
+		background: var(--warning);
+		transform: scale(1.1);
+	}
+	
+	/* Desktop: show original button, hide mobile button */
+	@media (min-width: 769px) {
+		.add-workshop-btn-mobile {
+			display: none;
+		}
+	}
+	
+	/* Mobile: hide original button, show mobile button */
+	@media (max-width: 768px) {
+		.add-workshop-btn {
+			display: none;
+		}
+	}
+	
+	.ical-modal {
+		max-width: 600px;
+		width: 90vw;
+	}
+	
+	.modal-header {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		margin-bottom: 1.5rem;
+	}
+	
+	.modal-header h2 {
+		margin: 0;
+		font-size: 1.5rem;
+	}
+	
+	.close-btn {
+		background: none;
+		border: none;
+		cursor: pointer;
+		padding: 0.5rem;
+		border-radius: 50%;
+		color: var(--foreground);
+		transition: background 0.2s;
+	}
+	
+	.close-btn:hover {
+		background: var(--muted);
+	}
+	
+	.ical-content p {
+		margin-bottom: 1.5rem;
+		color: var(--muted-foreground);
+	}
+	
+	.ical-url-container {
+		margin-bottom: 2rem;
+	}
+	
+	.ical-url-container label {
+		display: block;
+		font-weight: bold;
+		margin-bottom: 0.5rem;
+	}
+	
+	.url-input-group {
+		display: flex;
+		gap: 0.5rem;
+	}
+	
+	.ical-url-input {
+		flex: 1;
+		padding: 0.5rem;
+		border: 1px solid var(--border);
+		border-radius: var(--radius);
+		background: var(--muted);
+		color: var(--foreground);
+		font-family: monospace;
+		font-size: 0.9rem;
+	}
+	
+	.copy-btn {
+		background: var(--accent);
+		color: white;
+		border: none;
+		border-radius: var(--radius);
+		padding: 0.5rem 1rem;
+		cursor: pointer;
+		transition: background 0.2s;
+		white-space: nowrap;
+	}
+	
+	.copy-btn:hover {
+		background: var(--warning);
+		color: var(--color-blackened-steel);
+	}
+	
+	.instructions h3 {
+		margin-bottom: 1rem;
+		font-size: 1.1rem;
+	}
+	
+	.instruction-item {
+		margin-bottom: 1.5rem;
+		padding: 1rem;
+		background: var(--muted);
+		border-radius: var(--radius);
+	}
+	
+	.instruction-item h4 {
+		margin: 0 0 0.75rem 0;
+		font-size: 1rem;
+		color: var(--accent);
+	}
+	
+	.instruction-item ol {
+		margin: 0;
+		padding-left: 1.5rem;
+	}
+	
+	.instruction-item li {
+		margin-bottom: 0.25rem;
+		line-height: 1.4;
+	}
+	
+	/* Mobile calendar optimizations */
+	@media (max-width: 768px) {
+		:global(.ec-header-toolbar) {
+			flex-wrap: wrap;
+			gap: 0.5rem;
+		}
+		
+		:global(.ec-button-group) {
+			flex-wrap: wrap;
+		}
+		
+		:global(.ec-button) {
+			font-size: 0.8rem !important;
+			padding: 0.25rem 0.5rem !important;
+		}
+		
+		:global(.ec-toolbar-title) {
+			font-size: 1.1rem !important;
+			margin: 0.5rem 0 !important;
+		}
+		
+		:global(.ec-event) {
+			font-size: 0.75rem !important;
+			padding: 0.125rem 0.25rem !important;
+		}
+		
+		:global(.ec-day-grid-event) {
+			margin-bottom: 1px !important;
+		}
+		
+		:global(.ec-time-grid-event) {
+			border-radius: 2px !important;
+		}
+	}
+	
+	@media (max-width: 480px) {
+		:global(.ec-header-toolbar) {
+			flex-direction: column;
+			align-items: stretch;
+		}
+		
+		:global(.ec-toolbar-chunk) {
+			justify-content: center;
+			margin: 0.25rem 0;
+		}
+		
+		:global(.ec-button) {
+			font-size: 0.7rem !important;
+			padding: 0.2rem 0.4rem !important;
+		}
+		
+		:global(.ec-toolbar-title) {
+			font-size: 1rem !important;
+			text-align: center;
+		}
+		
+		:global(.ec-event) {
+			font-size: 0.7rem !important;
+			line-height: 1.2 !important;
+		}
+		
+		:global(.ec-day-head) {
+			font-size: 0.8rem !important;
+		}
+		
+		:global(.ec-day-number) {
+			font-size: 0.9rem !important;
+		}
+	}
+	
+	.calendar-container {
+		position: relative;
+	}
+	
+	/* Style the "Vandaag" (Today) button to use foreground color */
+	:global(.ec-button) {
+		color: var(--foreground) !important;
 	}
 </style>

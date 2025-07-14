@@ -14,6 +14,8 @@
 	let connectionError = '';
 	let pollInterval: NodeJS.Timeout;
 	let slides = '';
+	let slideNotes: string[] = [];
+	let currentSlideNotes = '';
 	let lessonData: any = null;
 	let workshopData: any = null;
 	let availableLessons: any[] = [];
@@ -25,6 +27,10 @@
 	// Long press state
 	let longPressTimer: NodeJS.Timeout;
 	let isLongPress = false;
+	let lastCommandTime = 0;
+	
+	// Button visibility state
+	let showButtons = true;
 
 	onMount(async () => {
 		// Check if there's a session code in the URL (from QR code or manual entry)
@@ -47,6 +53,30 @@
 		
 		// If no lesson/workshop params, lesson selection will happen after connection
 		// Always show manual entry interface - wait for user to enter session code from present page
+		
+		// Add keyboard event listener for presentation navigation
+		const handleKeydown = (e: KeyboardEvent) => {
+			if (!isConnected) return;
+			
+			switch (e.key) {
+				case 'ArrowLeft':
+					e.preventDefault();
+					hideButtonsOnKeyboardUse();
+					prevSlide();
+					break;
+				case 'ArrowRight':
+					e.preventDefault();
+					hideButtonsOnKeyboardUse();
+					nextSlide();
+					break;
+			}
+		};
+		
+		document.addEventListener('keydown', handleKeydown);
+		
+		return () => {
+			document.removeEventListener('keydown', handleKeydown);
+		};
 	});
 
 
@@ -62,11 +92,47 @@
 		return separators + 1;
 	}
 
+	function parseMarkdownSlidesWithNotes(markdown: string): { slides: string[], notes: string[] } {
+		if (!markdown) return { slides: [], notes: [] };
+		
+		const slideTexts = markdown.split(/^---$/gm).filter(slide => slide.trim());
+		const slides: string[] = [];
+		const notes: string[] = [];
+		
+		slideTexts.forEach(slideText => {
+			// Look for speaker notes in HTML comments (<!-- Note: ... -->)
+			const htmlCommentMatch = slideText.match(/<!--\s*[Nn]ote[s]?:\s*(.*?)\s*-->/s);
+			// Look for speaker notes in plain text (Note: ...)
+			const plainTextMatch = slideText.match(/(?:^|\n)[Nn]ote[s]?:\s*(.+?)(?=\n|$)/s);
+			
+			let noteContent = '';
+			let cleanSlideContent = slideText;
+			
+			if (htmlCommentMatch) {
+				noteContent = htmlCommentMatch[1].trim();
+				cleanSlideContent = slideText.replace(/<!--\s*[Nn]ote[s]?:.*?-->/s, '').trim();
+			} else if (plainTextMatch) {
+				noteContent = plainTextMatch[1].trim();
+				cleanSlideContent = slideText.replace(/(?:^|\n)[Nn]ote[s]?:.*$/m, '').trim();
+			}
+			
+			slides.push(cleanSlideContent);
+			notes.push(noteContent);
+		});
+		
+		return { slides, notes };
+	}
+
 	async function loadLessonData(lessonId: string) {
 		try {
 			lessonData = await databases.getDocument('lessen', 'les', lessonId);
 			slides = lessonData.slides || '';
 			totalSlides = countSlidesInMarkdown(slides);
+			// Parse slides with notes
+			const parsed = parseMarkdownSlidesWithNotes(slides);
+			slideNotes = parsed.notes;
+			// Update current slide notes
+			currentSlideNotes = slideNotes[currentSlide] || '';
 		} catch (error) {
 			console.error('Error loading lesson:', error);
 			connectionError = 'Kon les niet laden';
@@ -94,6 +160,11 @@
 				const lesson = await databases.getDocument('lessen', 'les', workshopData.lesson);
 				slides = lesson.slides || '';
 				totalSlides = countSlidesInMarkdown(slides);
+				// Parse slides with notes
+				const parsed = parseMarkdownSlidesWithNotes(slides);
+				slideNotes = parsed.notes;
+				// Update current slide notes
+				currentSlideNotes = slideNotes[currentSlide] || '';
 			}
 		} catch (error) {
 			console.error('Error loading workshop:', error);
@@ -345,6 +416,8 @@
 						const data = await response.json();
 						currentSlide = data.currentSlide;
 						totalSlides = data.totalSlides;
+						// Update current slide notes
+						currentSlideNotes = slideNotes[currentSlide] || '';
 					} else {
 						// Session might have ended
 						if (response.status === 404) {
@@ -355,7 +428,7 @@
 				} catch (error) {
 					console.error('Error polling session:', error);
 				}
-			}, 1000);
+			}, 500); // Reduced to 500ms for more responsive updates
 
 		} catch (error) {
 			isConnecting = false;
@@ -366,7 +439,16 @@
 	async function sendCommand(command: string) {
 		if (!isConnected) return;
 
+		// Debounce commands to prevent double-sends
+		const now = Date.now();
+		if (now - lastCommandTime < 500) {
+			console.log('🚫 Command debounced:', command);
+			return;
+		}
+		lastCommandTime = now;
+
 		try {
+			console.log('🎮 Sending command:', command, 'from slide:', currentSlide);
 			await fetch(`/api/presentation/${sessionCode}/commands`, {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
@@ -393,8 +475,8 @@
 		sendCommand('last');
 	}
 
-	// Long press handlers
-	function handleLongPressStart(action: 'prev' | 'next') {
+	// Press handlers - 1 second press triggers long action
+	function handlePressStart(action: 'prev' | 'next') {
 		isLongPress = false;
 		longPressTimer = setTimeout(() => {
 			isLongPress = true;
@@ -404,10 +486,10 @@
 				// Go to second-to-last slide (one before the last)
 				sendCommand('second-to-last');
 			}
-		}, 1000); // 1 second long press
+		}, 1000); // 1 second press
 	}
 
-	function handleLongPressEnd(action: 'prev' | 'next') {
+	function handlePressEnd(action: 'prev' | 'next') {
 		if (longPressTimer) {
 			clearTimeout(longPressTimer);
 		}
@@ -424,11 +506,19 @@
 		isLongPress = false;
 	}
 
-	function handleLongPressCancel() {
+	function handlePressCancel() {
 		if (longPressTimer) {
 			clearTimeout(longPressTimer);
 		}
 		isLongPress = false;
+	}
+
+	function hideButtonsOnKeyboardUse() {
+		showButtons = false;
+	}
+	
+	function showButtonsOnTouch() {
+		showButtons = true;
 	}
 
 	async function disconnect() {
@@ -452,6 +542,7 @@
 		sessionCode = '';
 		showLessonSelection = false;
 		upcomingWorkshops = [];
+		showButtons = true; // Reset button visibility
 	}
 </script>
 
@@ -460,6 +551,9 @@
 	{#if !isConnected}
 		<div class="bg-card rounded-lg border p-6 mb-6">
 			<h2 class="text-xl font-semibold mb-4">Verbinden met presentatie</h2>
+			<div class="mb-4 p-3 bg-muted border border-border rounded-md">
+				<p class="text-foreground text-sm">📺 Ga op het digibord naar <code class="bg-background px-1 py-0.5 rounded text-xs font-mono font-bold">toekomst.school/present</code> om de presentatie te starten.</p>
+			</div>
 			
 					
 			{#if workshopData}
@@ -499,8 +593,13 @@
 					type="text"
 					bind:value={sessionCode}
 					on:input={(e) => sessionCode = e.target.value.toUpperCase()}
-					placeholder="Voer 6-cijferige code in"
-					maxlength="6"
+					on:keydown={(e) => {
+						if (e.key === 'Enter' && sessionCode.trim() && !isConnecting) {
+							connectToSession();
+						}
+					}}
+					placeholder="Voer 4-cijferige code in"
+					maxlength="4"
 					disabled={isConnecting}
 					style="text-transform: uppercase;"
 					class="w-full px-3 py-2 border border-input rounded-md bg-background text-foreground text-center text-lg font-mono tracking-wider"
@@ -526,26 +625,21 @@
 			</button>
 		</div>
 	{:else}
+		<!-- Disconnect cross - absolute in top right -->
+		<div 
+			class="absolute top-4 right-4 z-50 text-destructive cursor-pointer hover:text-destructive/80 transition-colors"
+			on:click={disconnect}
+			on:keydown={(e) => e.key === 'Enter' && disconnect()}
+			role="button"
+			tabindex="0"
+			aria-label="Verbreek verbinding"
+		>
+			<svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+				<path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+			</svg>
+		</div>
+		
 		<div class="space-y-6">
-			<div class="bg-card rounded-lg border p-4">
-				<div class="flex items-center justify-between mb-2">
-					<div class="flex items-center gap-2">
-						<div class="w-3 h-3 bg-green-500 rounded-full animate-pulse"></div>
-						<span class="font-medium">Verbonden met sessie: {sessionCode}</span>
-					</div>
-					<button 
-						class="bg-destructive hover:bg-destructive/90 text-destructive-foreground px-3 py-1 rounded-md text-sm font-medium transition-colors"
-						on:click={disconnect}
-					>
-						Verbreek
-					</button>
-				</div>
-				<div class="text-center">
-					<span class="inline-block bg-primary text-primary-foreground px-3 py-1 rounded-full text-sm font-medium">
-						Slide {currentSlide + 1} / {totalSlides}
-					</span>
-				</div>
-			</div>
 
 			{#if showLessonSelection && !lessonData && !workshopData}
 				<div class="bg-card rounded-lg border p-4 mb-4">
@@ -618,40 +712,54 @@
 				</div>
 			{/if}
 
+			{#if currentSlideNotes}
+				<div class="slide-notes">
+					<p class="text-foreground text-lg text-center">{currentSlideNotes}</p>
+				</div>
+			{/if}
 
 			<div class="controls-layout">
-				<!-- Navigation buttons - Fixed to bottom -->
-				<div class="fixed-bottom-controls">
-					<button 
-						class="bg-primary hover:bg-primary/90 text-primary-foreground p-4 rounded-lg flex flex-col items-center gap-2 font-medium transition-colors"
-						on:mousedown={() => handleLongPressStart('prev')}
-						on:mouseup={() => handleLongPressEnd('prev')}
-						on:mouseleave={handleLongPressCancel}
-						on:touchstart={() => handleLongPressStart('prev')}
-						on:touchend={() => handleLongPressEnd('prev')}
-						on:touchcancel={handleLongPressCancel}
-					>
-						<svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-							<polygon points="15,18 9,12 15,6" />
-						</svg>
-						Vorige
-					</button>
-
-					<button 
-						class="bg-primary hover:bg-primary/90 text-primary-foreground p-4 rounded-lg flex flex-col items-center gap-2 font-medium transition-colors"
-						on:mousedown={() => handleLongPressStart('next')}
-						on:mouseup={() => handleLongPressEnd('next')}
-						on:mouseleave={handleLongPressCancel}
-						on:touchstart={() => handleLongPressStart('next')}
-						on:touchend={() => handleLongPressEnd('next')}
-						on:touchcancel={handleLongPressCancel}
-					>
-						<svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-							<polygon points="9,18 15,12 9,6" />
-						</svg>
-						Volgende
-					</button>
+				<!-- Floating slide counter -->
+				<div class="floating-slide-counter">
+					<span class="inline-block bg-primary text-primary-foreground px-3 py-1 rounded-full text-sm font-medium">
+						Slide {currentSlide + 1} / {totalSlides}
+					</span>
 				</div>
+				
+				<!-- Navigation buttons - Fixed to bottom -->
+				{#if showButtons}
+					<div class="fixed-bottom-controls">
+						<button 
+							class="bg-primary hover:bg-primary/90 text-primary-foreground p-4 rounded-lg flex flex-col items-center gap-2 font-medium transition-colors"
+							on:mousedown={() => { showButtonsOnTouch(); handlePressStart('prev'); }}
+							on:mouseup={() => handlePressEnd('prev')}
+							on:mouseleave={handlePressCancel}
+							on:touchstart={() => { showButtonsOnTouch(); handlePressStart('prev'); }}
+							on:touchend={() => handlePressEnd('prev')}
+							on:touchcancel={handlePressCancel}
+						>
+							<svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+								<polygon points="15,18 9,12 15,6" />
+							</svg>
+							Vorige
+						</button>
+
+						<button 
+							class="bg-primary hover:bg-primary/90 text-primary-foreground p-4 rounded-lg flex flex-col items-center gap-2 font-medium transition-colors"
+							on:mousedown={() => { showButtonsOnTouch(); handlePressStart('next'); }}
+							on:mouseup={() => handlePressEnd('next')}
+							on:mouseleave={handlePressCancel}
+							on:touchstart={() => { showButtonsOnTouch(); handlePressStart('next'); }}
+							on:touchend={() => handlePressEnd('next')}
+							on:touchcancel={handlePressCancel}
+						>
+							<svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+								<polygon points="9,18 15,12 9,6" />
+							</svg>
+							Volgende
+						</button>
+					</div>
+				{/if}
 			</div>
 		</div>
 	{/if}
@@ -663,26 +771,45 @@
 		min-height: 40vh;
 	}
 
-	.fixed-bottom-controls {
+	.floating-slide-counter {
 		position: fixed;
 		bottom: 2rem;
+		left: 50%;
+		transform: translateX(-50%);
+		z-index: 15;
+	}
+
+	.fixed-bottom-controls {
+		position: fixed;
+		bottom: 5rem;
 		left: 50%;
 		transform: translateX(-50%);
 		display: grid;
 		grid-template-columns: 1fr 1fr;
 		gap: 1rem;
 		width: calc(100% - 4rem);
-		max-width: 400px;
+		max-width: 320px;
 		z-index: 10;
 	}
-
+	
 	.fixed-bottom-controls button {
+		max-width: 150px;
+		padding: 0.75rem 1rem;
 		box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 	}
 
 	@media (max-width: 640px) {
 		.fixed-bottom-controls {
 			width: calc(100% - 2rem);
+			bottom: 6rem;
+		}
+		
+		.fixed-bottom-controls button {
+			max-width: none;
+			padding: 1rem;
+		}
+		
+		.floating-slide-counter {
 			bottom: 1rem;
 		}
 	}

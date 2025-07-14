@@ -50,7 +50,7 @@
 	let editSchool = null;
 
 	// Add a filter state for klant
-	let onlyKlant = false;
+	let onlyKlant = true;
 
 	// Fetch unique values for dropdowns
 	async function fetchDropdowns() {
@@ -72,26 +72,62 @@
 	async function fetchScholen() {
 		loading = true;
 		let queries = [Query.limit(perPage), Query.offset((page - 1) * perPage)];
+		
 		if (filterProvincie && filterProvincie.value)
 			queries.push(Query.equal('PROVINCIE', filterProvincie.value));
 		if (filterPlaatsnaam && filterPlaatsnaam.value)
 			queries.push(Query.equal('PLAATSNAAM', filterPlaatsnaam.value));
-		if (search) {
-			// Search on NAAM or address (STRAATNAAM + HUISNUMMER)
-			queries.push(
-				Query.or([
-					Query.search('NAAM', search),
-					Query.search('STRAATNAAM', search),
-					Query.search('HUISNUMMER', search)
-				])
-			);
-		}
 		if (onlyKlant) queries.push(Query.equal('KLANT', true));
+		
+		// Add search queries if search term exists
+		if (search && search.trim()) {
+			try {
+				// Try multiple search approaches
+				queries.push(Query.contains('NAAM', search.trim()));
+			} catch (e) {
+				console.warn('Contains query failed, trying alternative approach');
+			}
+		}
+		
 		try {
+			console.log('Executing queries:', queries);
 			const res = await databases.listDocuments(DB_ID, COLLECTION_ID, queries);
-			scholen = res.documents;
-			total = res.total;
+			
+			// If we have a search term but no results with contains, try a broader search
+			if (search && search.trim() && res.documents.length === 0) {
+				console.log('No results with contains, trying broader search...');
+				
+				// Remove the contains query and fetch all, then filter
+				const baseQueries = queries.filter(q => !q.toString().includes('contains'));
+				baseQueries.push(Query.limit(1000)); // Increase limit for search
+				
+				const broadRes = await databases.listDocuments(DB_ID, COLLECTION_ID, baseQueries);
+				const searchTerm = search.toLowerCase().trim();
+				
+				const filteredResults = broadRes.documents.filter(school => {
+					const naam = (school.NAAM || '').toLowerCase();
+					const straatnaam = (school.STRAATNAAM || '').toLowerCase();
+					const huisnummer = (school.HUISNUMMER || '').toString().toLowerCase();
+					const plaatsnaam = (school.PLAATSNAAM || '').toLowerCase();
+					
+					return naam.includes(searchTerm) || 
+						   straatnaam.includes(searchTerm) || 
+						   huisnummer.includes(searchTerm) ||
+						   plaatsnaam.includes(searchTerm);
+				});
+				
+				// Apply pagination to filtered results
+				const startIndex = (page - 1) * perPage;
+				const endIndex = startIndex + perPage;
+				
+				scholen = filteredResults.slice(startIndex, endIndex);
+				total = filteredResults.length;
+			} else {
+				scholen = res.documents;
+				total = res.total;
+			}
 		} catch (e) {
+			console.error('Error fetching schools:', e);
 			scholen = [];
 			total = 0;
 		}

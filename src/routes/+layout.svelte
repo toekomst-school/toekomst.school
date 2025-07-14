@@ -35,6 +35,29 @@
 			sessionStorage.removeItem('redirectAfterAuth');
 			goto(redirectUrl);
 		}
+		
+		// Register service worker for PWA
+		if ('serviceWorker' in navigator) {
+			try {
+				const registration = await navigator.serviceWorker.register('/sw.js');
+				console.log('Service Worker registered:', registration);
+				
+				// Listen for service worker messages
+				navigator.serviceWorker.addEventListener('message', (event) => {
+					if (event.data.type === 'PLANNING_SYNCED') {
+						console.log('Planning data synced in background');
+						// Optionally refresh planning data in the app
+					}
+				});
+				
+				// Register for background sync if supported
+				if (registration.sync) {
+					registration.sync.register('background-sync-planning');
+				}
+			} catch (error) {
+				console.log('Service Worker registration failed:', error);
+			}
+		}
 	});
 	
 	// Define public routes that don't require authentication
@@ -53,11 +76,17 @@
 
 	$: currentPath = $page && $page.url && $page.url.pathname ? $page.url.pathname : '';
 	$: shouldShowSidebar = $user && !NO_SIDEBAR_ROUTES.includes(currentPath);
+	$: isHomePage = currentPath === '/';
 	
 	// Handle route protection
 	$: if (!$isLoading && !$user && !PUBLIC_ROUTES.includes(currentPath)) {
 		// User is not authenticated and trying to access protected route
 		handleAuthRedirect();
+	}
+	
+	// Redirect logged-in users from homepage to dashboard
+	$: if (!$isLoading && $user && currentPath === '/') {
+		goto('/dashboard');
 	}
 	
 	async function handleAuthRedirect() {
@@ -148,7 +177,8 @@
 	}
 
 	$: if ($user && (!$user.labels || $user.labels.length === 0)) {
-		showRoleModal = true;
+		// Automatically set user as student if no label is present
+		setRole('student');
 	}
 
 	async function setRole(role: string) {
@@ -244,12 +274,12 @@
 	{/if}
 {:else}
 	<div class="fixed top-4 left-4 z-50">
-		<img src="/toekomst_logo.svg" alt="Toekomst Logo" class="h-12 w-auto" />
+		<img src="/toekomst_logo.svg" alt="Toekomst Logo" class="h-12 w-auto logo-invert-light" />
 	</div>
 	<div class="fixed top-4 right-4 z-50">
 		<button
 			on:click={() => loginWithOAuth()}
-			class="flex h-10 items-center rounded bg-blue-600 px-6 text-white shadow transition hover:bg-blue-700"
+			class="flex h-10 items-center rounded bg-primary px-6 text-primary-foreground shadow-lg transition hover:bg-primary/90"
 			style="line-height:1;"
 		>
 			Login

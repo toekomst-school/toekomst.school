@@ -2,6 +2,11 @@
 	export let event: any;
 	export let currentUser: any = null;
 	export let isVakdocent: boolean = false;
+	
+	// Debug logging
+	console.log('WorkshopView: received event:', event);
+	console.log('WorkshopView: event.sessions:', event.sessions);
+	console.log('WorkshopView: event.workshopType:', event.workshopType);
 	import { createEventDispatcher } from 'svelte';
 	import { Map, MapPin, Clipboard, Pencil, Check } from '@lucide/svelte';
 	import { goto } from '$app/navigation';
@@ -141,8 +146,33 @@
 					>{:else}-{/if}
 			</div>
 			<div><span>Datum:</span> {formatDate(event.start)}</div>
-			<div><span>Tijd:</span> {formatTimeRange(event.start, event.end)}</div>
-			<div><span>Lengte:</span> {event.length} min</div>
+			{#if event.sessions && event.sessions.length > 0}
+				<div style="grid-column: 1 / -1;">
+					<span>Sessies:</span>
+					{#each event.sessions as session, index}
+						<div class="session-timeline-item {session.type}">
+							<div class="session-timeline-header">
+								<span class="session-timeline-icon">
+									{session.type === 'session' ? '📚' : '☕'}
+								</span>
+								<span class="session-timeline-title">{session.title}</span>
+								<span class="session-timeline-time">
+									{formatTimeRange(session.start, session.end)}
+								</span>
+							</div>
+							{#if session.duration}
+								<div class="session-timeline-duration">
+									{session.duration} minuten
+								</div>
+							{/if}
+						</div>
+					{/each}
+				</div>
+				<div><span>Totale sessietijd:</span> {event.totalDuration || event.length} min</div>
+			{:else}
+				<div><span>Tijd:</span> {formatTimeRange(event.start, event.end)}</div>
+				<div><span>Totale sessietijd:</span> {event.length} min</div>
+			{/if}
 			<div><span>Status:</span> {event.status}</div>
 			<div><span>Materialen:</span> {event.materialen}</div>
 			<div><span>Beschrijving:</span> {event.description}</div>
@@ -375,5 +405,57 @@
 
 	.start-lesson-btn:active {
 		transform: translateY(0);
+	}
+
+	/* Session timeline styles */
+
+	.session-timeline-item {
+		display: flex;
+		flex-direction: column;
+		gap: 0.25rem;
+		padding: 0.75rem;
+		margin-bottom: 0.5rem;
+		border-radius: 6px;
+		border-left: 4px solid;
+	}
+
+	.session-timeline-item.session {
+		border-left-color: var(--accent);
+	}
+
+	.session-timeline-item.break {
+		border-left-color: var(--warning);
+	}
+
+	.session-timeline-item:last-child {
+		margin-bottom: 0;
+	}
+
+	.session-timeline-header {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		font-weight: 600;
+	}
+
+	.session-timeline-icon {
+		font-size: 1.1rem;
+	}
+
+	.session-timeline-title {
+		flex: 1;
+		font-size: 0.9rem;
+	}
+
+	.session-timeline-time {
+		font-size: 0.8rem;
+		color: var(--muted-foreground, #6c757d);
+		font-weight: 500;
+	}
+
+	.session-timeline-duration {
+		font-size: 0.75rem;
+		color: var(--muted-foreground, #6c757d);
+		margin-left: 1.6rem;
 	}
 </style>

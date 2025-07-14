@@ -1,21 +1,15 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-
-// Simple in-memory store - in production you'd use a proper database/cache
-const sessionCommands = new Map<string, {
-	command: string;
-	timestamp: number;
-}[]>();
+import { sessionStore } from '$lib/server/sessionStore.js';
 
 export const GET: RequestHandler = async ({ params, url }) => {
 	const { sessionCode } = params;
 	const since = parseInt(url.searchParams.get('since') || '0');
 	
-	const commands = sessionCommands.get(sessionCode) || [];
-	const newCommands = commands.filter(cmd => cmd.timestamp > since);
+	const commands = sessionStore.getCommandsSince(sessionCode, since);
 	
 	return json({
-		commands: newCommands,
+		commands: commands,
 		lastUpdate: commands.length > 0 ? Math.max(...commands.map(c => c.timestamp)) : Date.now()
 	});
 };
@@ -24,20 +18,22 @@ export const POST: RequestHandler = async ({ params, request }) => {
 	const { sessionCode } = params;
 	const { command } = await request.json();
 	
-	if (!sessionCommands.has(sessionCode)) {
-		sessionCommands.set(sessionCode, []);
-	}
+	// Add command to shared store
+	const commandId = sessionStore.addCommand(sessionCode, command);
 	
-	const commands = sessionCommands.get(sessionCode)!;
-	commands.push({
-		command,
-		timestamp: Date.now()
+	// Try to send directly via WebSocket if presenter is connected
+	const sent = sessionStore.sendToPresenter(sessionCode, {
+		type: 'remote-command',
+		command: command,
+		commandId
 	});
 	
-	// Keep only last 10 commands to prevent memory leak
-	if (commands.length > 10) {
-		commands.splice(0, commands.length - 10);
-	}
+	console.log('🎮 Command API - Command processed:', {
+		sessionCode,
+		command,
+		commandId,
+		sentViaWebSocket: sent
+	});
 	
-	return json({ success: true });
+	return json({ success: true, commandId, sentViaWebSocket: sent });
 };

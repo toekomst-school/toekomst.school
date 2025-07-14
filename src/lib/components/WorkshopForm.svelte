@@ -3,6 +3,16 @@
 		value: string | number;
 		label: string;
 	}
+	export interface Session {
+		start: string;
+		end: string;
+		title?: string;
+		type: 'session' | 'break';
+		duration?: number;
+		lesson?: string;
+		group?: string;
+	}
+	
 	export interface WorkshopFormValues {
 		lesson?: string;
 		school?: string;
@@ -13,12 +23,17 @@
 		status?: string;
 		description?: string;
 		start?: string;
+		workshopType?: 'single' | 'multi-session';
+		sessions?: Session[];
+		totalDuration?: number;
 	}
 </script>
 
 <script lang="ts">
 	import { createEventDispatcher } from 'svelte';
 	import SvelteSelect from 'svelte-select';
+	import { DatePicker } from '$lib/components/ui/date-picker/index.js';
+	import { TimePicker } from '$lib/components/ui/time-picker/index.js';
 
 	export let lessonOptions: Option[] = [];
 	export let schoolOptions: Option[] = [];
@@ -37,7 +52,10 @@
 	export let materialen: string = '';
 	export let status: string = 'pending';
 	export let description: string = '';
-	export let editEventStart: string = '';
+	export let editEventStart: Date | null = null;
+	export let startTime: { hour: number; minute: number } | undefined = undefined;
+	export let workshopType: 'single' | 'multi-session' = 'multi-session';
+	export let sessions: Session[] = [];
 
 	const dispatch = createEventDispatcher();
 
@@ -50,19 +68,199 @@
 		materialen = initialValues.materialen ?? '';
 		status = initialValues.status ?? 'pending';
 		description = initialValues.description ?? '';
-		editEventStart = initialValues.start ? initialValues.start.slice(0, 16) : '';
+		editEventStart = initialValues.start ? new Date(initialValues.start) : null;
+		workshopType = initialValues.workshopType ?? 'multi-session';
+		sessions = initialValues.sessions ?? [];
 	}
 
 	$: endTime = (() => {
-		if (!editEventStart || !lessonLength) return '';
-		const totalMinutes = Number(lessonLength);
-		const end = new Date(new Date(editEventStart).getTime() + totalMinutes * 60000);
-		return end.toLocaleString('nl-NL', { hour: '2-digit', minute: '2-digit' });
+		if (sessions.length === 0) return '';
+		const lastSession = sessions[sessions.length - 1];
+		if (!lastSession.end) return '';
+		return new Date(lastSession.end).toLocaleString('nl-NL', { hour: '2-digit', minute: '2-digit' });
+	})();
+	
+	$: totalDuration = sessions
+		.filter(s => s.type === 'session')
+		.reduce((total, session) => total + (session.duration || 0), 0);
+
+	// Initialize with default sessions when start date is set
+	$: if (sessions.length === 0 && editEventStart instanceof Date) {
+		// Initialize startTime if not set
+		if (!startTime) {
+			startTime = { hour: 8, minute: 30 };
+		}
+		
+		const workshopStartDate = new Date(editEventStart);
+		// Use time from time picker if available, otherwise default to 8:30 AM
+		if (startTime) {
+			workshopStartDate.setHours(startTime.hour, startTime.minute, 0, 0);
+		} else {
+			workshopStartDate.setHours(8, 30, 0, 0); // Default to 8:30 AM
+		}
+		
+		const prepStartDate = new Date(workshopStartDate.getTime() - 30 * 60000); // 30 min before
+		const sessionEndDate = new Date(workshopStartDate.getTime() + 90 * 60000);
+		
+		sessions = [
+			{
+				start: prepStartDate.toISOString(),
+				end: workshopStartDate.toISOString(),
+				type: 'session',
+				title: 'Voorbereiding op locatie',
+				duration: 30
+				// No lesson or group for preparation
+			},
+			{
+				start: workshopStartDate.toISOString(),
+				end: sessionEndDate.toISOString(),
+				type: 'session',
+				title: 'Sessie 1',
+				duration: 90
+				// lesson and group will be set per session
+			}
+		];
+	}
+	
+	// Track if we're updating to prevent infinite loops
+	let isUpdating = false;
+	
+	// Update session times when start date, time, or session durations change
+	$: if (editEventStart instanceof Date && startTime && sessions.length > 0 && !isUpdating) {
+		updateSessionTimes();
+	}
+
+	function addSession() {
+		const lastSession = sessions[sessions.length - 1];
+		const startTime = lastSession?.end || (editEventStart instanceof Date ? editEventStart.toISOString() : null);
+		
+		if (!startTime) return;
+		
+		// Find the last actual session to copy lesson, group, and duration from
+		const lastActualSession = sessions.filter(s => s.type === 'session').pop();
+		
+		// Add a 15-minute break after the last session
+		const breakStart = startTime;
+		const breakEnd = new Date(new Date(breakStart).getTime() + 15 * 60000).toISOString();
+		
+		// Get duration from last session, default to 90 if none exists
+		const sessionDuration = lastActualSession?.duration || 90;
+		
+		// Add new session after the break
+		const sessionStart = breakEnd;
+		const sessionEnd = new Date(new Date(sessionStart).getTime() + sessionDuration * 60000).toISOString();
+		
+		// Count actual sessions (not preparation)
+		const actualSessionCount = sessions.filter(s => s.type === 'session' && s.title !== 'Voorbereiding op locatie').length;
+		
+		sessions = [
+			...sessions,
+			{
+				start: breakStart,
+				end: breakEnd,
+				type: 'break',
+				title: 'Pauze',
+				duration: 15
+			},
+			{
+				start: sessionStart,
+				end: sessionEnd,
+				type: 'session',
+				title: `Sessie ${actualSessionCount + 1}`,
+				duration: sessionDuration,
+				lesson: lastActualSession?.lesson,
+				group: lastActualSession?.group
+			}
+		];
+	}
+
+	function removeSession(index: number) {
+		// Find the session being removed
+		const sessionToRemove = sessions[index];
+		
+		if (sessionToRemove.type === 'session') {
+			// Look for a break immediately before this session
+			const breakIndex = index - 1;
+			if (breakIndex >= 0 && sessions[breakIndex].type === 'break') {
+				// Remove both the break and the session
+				sessions = sessions.filter((_, i) => i !== breakIndex && i !== index);
+			} else {
+				// Just remove the session
+				sessions = sessions.filter((_, i) => i !== index);
+			}
+		} else {
+			// If removing a break, just remove it
+			sessions = sessions.filter((_, i) => i !== index);
+		}
+		
+		// Recalculate times for remaining sessions
+		updateSessionTimes();
+	}
+
+	function updateSessionTimes() {
+		if (sessions.length === 0 || !(editEventStart instanceof Date) || !startTime || isUpdating) {
+			return;
+		}
+		
+		isUpdating = true;
+		
+		// Create the actual workshop start time from date + time picker
+		const workshopStartTime = new Date(editEventStart);
+		workshopStartTime.setHours(startTime.hour, startTime.minute, 0, 0);
+		
+		// If first session is preparation, start 30 minutes before the workshop time
+		let currentTime = sessions[0].title === 'Voorbereiding op locatie' 
+			? new Date(workshopStartTime.getTime() - 30 * 60000).toISOString()
+			: workshopStartTime.toISOString();
+		
+		sessions = sessions.map(session => {
+			const start = currentTime;
+			const end = new Date(new Date(start).getTime() + (session.duration || 0) * 60000).toISOString();
+			currentTime = end;
+			return { ...session, start, end };
+		});
+		
+		// Reset the flag after a short delay to allow reactivity to settle
+		setTimeout(() => {
+			isUpdating = false;
+		}, 10);
+	}
+
+	function updateSessionDuration(index: number, duration: number) {
+		sessions[index].duration = duration;
+		sessions = [...sessions];
+	}
+
+	function updateSessionLesson(index: number, lessonValue: string | number | undefined) {
+		if (sessions[index].type === 'session') {
+			sessions[index].lesson = lessonValue?.toString();
+			sessions = [...sessions];
+		}
+	}
+
+	function updateSessionGroup(index: number, groupValue: string | undefined) {
+		if (sessions[index].type === 'session') {
+			sessions[index].group = groupValue;
+			sessions = [...sessions];
+		}
+	}
+
+	$: totalSessionTimeFormatted = (() => {
+		const hours = Math.floor(totalDuration / 60);
+		const minutes = totalDuration % 60;
+		
+		if (hours === 0) {
+			return `${minutes} min`;
+		} else if (minutes === 0) {
+			return `${hours}:00`;
+		} else {
+			return `${hours}:${minutes.toString().padStart(2, '0')}`;
+		}
 	})();
 
 	function handleSubmit(e: Event) {
 		e.preventDefault();
-		console.log('Workshop form submitting with length:', lessonLength);
+		console.log('Workshop form submitting with type:', workshopType);
 		dispatch('submit', {
 			selectedLesson: selectedLesson ? selectedLesson.value : '',
 			selectedSchool: selectedSchool ? selectedSchool.value : '',
@@ -72,7 +270,10 @@
 			materialen,
 			status,
 			description,
-			editEventStart
+			editEventStart: editEventStart instanceof Date ? editEventStart.toISOString() : '',
+			workshopType,
+			sessions,
+			totalDuration: totalDuration
 		});
 	}
 	function handleCancel() {
@@ -83,15 +284,6 @@
 <form on:submit|preventDefault={handleSubmit}>
 	<h2>{isEdit ? 'Edit Event' : 'Workshop toevoegen'}</h2>
 	<label>
-		Les:
-		<SvelteSelect
-			items={lessonOptions}
-			bind:value={selectedLesson}
-			placeholder="Kies een les..."
-			required
-		/>
-	</label>
-	<label>
 		School:
 		<SvelteSelect
 			items={schoolOptions}
@@ -99,10 +291,6 @@
 			placeholder="Kies een school..."
 			required
 		/>
-	</label>
-	<label>
-		Klas/Groep:
-		<input type="text" bind:value={selectedGroup} placeholder="Klas of groep..." />
 	</label>
 	<label>
 		Vakdocent:
@@ -113,23 +301,92 @@
 			clearable={true}
 		/>
 	</label>
-	<label>
-		Start tijd en datum:
-		<input type="datetime-local" bind:value={editEventStart} required />
-	</label>
-	<label>
-		Lengte les (minuten):
-		<input 
-			type="number" 
-			min="5" 
-			step="5" 
-			bind:value={lessonLength} 
-			on:input={() => console.log('Length changed to:', lessonLength)}
-			required 
-		/>
-	</label>
+	<div class="date-time-container">
+		<label>
+			Start datum:
+			<DatePicker 
+				bind:value={editEventStart}
+				placeholder="Selecteer datum..."
+			/>
+		</label>
+		<label>
+			Eerste workshop start:
+			<TimePicker 
+				bind:value={startTime}
+				placeholder="Selecteer tijd..."
+			/>
+		</label>
+	</div>
+	
+		<div style="grid-column: 1 / -1;">
+			<h3>Sessies en pauzes</h3>
+			{#each sessions as session, index}
+				<div class="session-item {session.type}">
+					<div class="session-header">
+						<span class="session-title">
+							{session.type === 'session' ? '📚' : '☕'} {session.title}
+						</span>
+						{#if session.type === 'session' && session.title !== 'Voorbereiding op locatie' && session.title !== 'Sessie 1' && sessions.filter(s => s.type === 'session').length > 2}
+							<button type="button" class="remove-btn" on:click={() => removeSession(index)}>×</button>
+						{/if}
+					</div>
+					<div class="session-details">
+						{#if session.start && session.end}
+							<span class="session-time">
+								{new Date(session.start).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' })} - 
+								{new Date(session.end).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' })}
+							</span>
+						{:else}
+							<span class="session-time">Selecteer eerst een starttijd</span>
+						{/if}
+						<input 
+							type="number" 
+							min="5" 
+							step="5" 
+							bind:value={session.duration} 
+							on:input={(e) => {
+								const newDuration = parseInt(e.target.value) || 0;
+								updateSessionDuration(index, newDuration);
+							}}
+							class="duration-input"
+							placeholder="min"
+						/>
+					</div>
+					{#if session.type === 'session' && session.title !== 'Voorbereiding op locatie'}
+						<div class="session-overrides">
+							<div class="session-override-row">
+								<div class="session-override-field">
+									<label class="session-override-label">Workshop:</label>
+									<SvelteSelect
+										items={lessonOptions}
+										value={lessonOptions.find(opt => opt.value === session.lesson)}
+										on:change={(event) => updateSessionLesson(index, event.detail?.value)}
+										placeholder="Selecteer workshop"
+										clearable={true}
+									/>
+								</div>
+								<div class="session-override-field">
+									<label class="session-override-label">Groep:</label>
+									<input
+										type="text"
+										bind:value={session.group}
+										on:input={() => updateSessionGroup(index, session.group)}
+										placeholder="Groep/klas"
+										class="session-group-input"
+									/>
+								</div>
+							</div>
+						</div>
+					{/if}
+				</div>
+			{/each}
+			<button type="button" class="add-session-btn" on:click={addSession}>
+				+ Sessie toevoegen
+			</button>
+		</div>
+	
 	<div style="grid-column: 1 / -1; font-size: 1rem; color: var(--accent); margin-bottom: 0.5rem;">
-		Eindtijd: {endTime}
+		Eindtijd: {endTime} (Totale sessietijd: {totalSessionTimeFormatted})
 	</div>
 	<label>
 		Beschrijving/opmerkingen:
@@ -188,8 +445,8 @@
 		padding: 0.5em 0.75em;
 		border-radius: var(--radius);
 		border: 1px solid var(--color-ash-grey);
-		background: #fff;
-		color: var(--color-blackened-steel);
+		background: transparent;
+		color: var(--foreground);
 		width: 100%;
 		box-sizing: border-box;
 		font-family: inherit;
@@ -210,6 +467,174 @@
 			flex-direction: column;
 			gap: 0.5rem;
 			margin-top: 0.5rem;
+		}
+	}
+
+	/* Session builder styles */
+
+	.session-item {
+		display: flex;
+		flex-direction: column;
+		gap: 0.5rem;
+		padding: 0.75rem;
+		margin-bottom: 0.5rem;
+		border-radius: var(--radius);
+		border: 1px solid #ddd;
+	}
+
+	.session-item.session {
+		border-color: var(--accent);
+	}
+
+	.session-item.break {
+		border-color: var(--warning);
+	}
+
+	.session-header {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+	}
+
+	.session-title {
+		font-weight: bold;
+		font-size: 0.9rem;
+	}
+
+	.session-details {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		gap: 1rem;
+	}
+
+	.session-time {
+		font-size: 0.8rem;
+		color: #666;
+	}
+
+	.duration-input {
+		width: 80px;
+		padding: 0.25rem 0.5rem;
+		font-size: 0.8rem;
+	}
+
+	.remove-btn {
+		background: transparent;
+		color: currentColor;
+		border: none;
+		border-radius: 4px;
+		width: 24px;
+		height: 24px;
+		cursor: pointer;
+		font-size: 16px;
+		line-height: 1;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+	}
+
+	.remove-btn:hover {
+		background: var(--muted, #f3f4f6);
+	}
+
+	.add-session-btn {
+		background: var(--accent);
+		color: white;
+		border: none;
+		border-radius: var(--radius);
+		padding: 0.5rem 1rem;
+		cursor: pointer;
+		font-size: 0.9rem;
+		margin-top: 0.5rem;
+		width: 100%;
+	}
+
+	.add-session-btn:hover {
+		background: var(--warning);
+		color: white;
+	}
+
+	h3 {
+		margin: 0 0 0.5rem 0;
+		font-size: 1.1rem;
+		font-weight: bold;
+	}
+
+	.date-time-container {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: 1rem;
+		grid-column: 1 / -1;
+	}
+
+	.session-overrides {
+		margin-top: 0.5rem;
+		padding-top: 0.5rem;
+		border-top: 1px solid #e5e5e5;
+	}
+
+	.session-override-row {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: 1rem;
+	}
+
+	.session-override-field {
+		display: flex;
+		flex-direction: column;
+		gap: 0.25rem;
+	}
+
+	.session-override-label {
+		font-size: 0.8rem;
+		font-weight: 500;
+		color: #666;
+	}
+
+	.session-group-input {
+		font-size: 0.9rem;
+		padding: 0.4rem 0.6rem;
+		border-radius: var(--radius);
+		border: 1px solid var(--color-ash-grey);
+		background: transparent;
+		color: var(--foreground);
+		box-sizing: border-box;
+	}
+
+	@media (max-width: 600px) {
+		.session-override-row {
+			grid-template-columns: 1fr;
+			gap: 0.5rem;
+		}
+	}
+
+	.total-time-display {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		padding: 0.75rem;
+		margin: 1rem 0;
+		background: var(--muted, #f8f9fa);
+		border-radius: var(--radius);
+		border: 1px solid #e5e5e5;
+	}
+
+	.total-time-label {
+		font-weight: 600;
+		color: var(--color-blackened-steel);
+	}
+
+	.total-time-value {
+		font-size: 1.1rem;
+		font-weight: bold;
+		color: var(--accent);
+		font-family: monospace;
+	}
+
+	@media (max-width: 600px) {
+		.date-time-container {
+			grid-template-columns: 1fr;
 		}
 	}
 </style>

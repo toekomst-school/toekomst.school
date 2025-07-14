@@ -30,6 +30,7 @@
 		priority: string;
 	}> = [];
 	let loading = true;
+	let expandedAnnouncements = new Set<number>();
 
 	// Mock data for demonstration
 	const mockWorkshops = [
@@ -210,6 +211,15 @@
 	function handleWorkshopClick(workshop: any) {
 		goto(`/planning?id=${workshop.id}`);
 	}
+
+	function toggleAnnouncement(announcementId: number) {
+		if (expandedAnnouncements.has(announcementId)) {
+			expandedAnnouncements.delete(announcementId);
+		} else {
+			expandedAnnouncements.add(announcementId);
+		}
+		expandedAnnouncements = expandedAnnouncements; // Trigger reactivity
+	}
 </script>
 
 <div class="container mx-auto p-6 max-w-7xl">
@@ -220,124 +230,117 @@
 			<p class="text-muted-foreground">Dashboard wordt geladen...</p>
 		</div>
 	{:else}
-		<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-			<!-- Upcoming Workshops Section -->
-			<div class="lg:col-span-2">
-				<Card.Root>
-					<Card.Header>
-						<div class="flex items-center justify-between">
-							<div class="flex items-center gap-2">
-								<Calendar size={24} class="text-primary" />
-								<Card.Title>Aankomende Workshops</Card.Title>
-							</div>
-							<span class="text-sm bg-muted px-3 py-1 rounded-full text-muted-foreground">
-								{upcomingWorkshops.length} workshops
-							</span>
-						</div>
-					</Card.Header>
-					<Card.Content>
-						{#if upcomingWorkshops.length > 0}
-							<div class="space-y-4">
-								{#each upcomingWorkshops as workshop (workshop.id)}
-									<div class="cursor-pointer hover:bg-muted/50 transition-colors rounded-lg" on:click={() => handleWorkshopClick(workshop)} role="button" tabindex="0" on:keydown={(e) => e.key === 'Enter' && handleWorkshopClick(workshop)}>
-										<Card.Root class="border-l-4 border-l-primary/20">
-											<Card.Header class="pb-3">
-											<div class="flex items-start justify-between">
-												<Card.Title class="text-lg">{workshop.schoolName}</Card.Title>
-												<div
-													class="flex items-center gap-1 text-xs font-medium px-2 py-1 rounded-full {workshop.status === 'confirmed' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}"
-												>
-													<svelte:component this={getStatusIcon(workshop.status)} size={14} />
-													<span>{workshop.status === 'confirmed' ? 'Bevestigd' : 'In behandeling'}</span>
-												</div>
-											</div>
-										</Card.Header>
-										<Card.Content class="pt-0">
-											<div class="space-y-2 text-sm text-muted-foreground">
-												<div class="flex items-center gap-2">
-													<Users size={16} />
-													<span>{workshop.group}</span>
-												</div>
-												<div class="flex items-center gap-2">
-													<MapPin size={16} />
-													<span>{workshop.title}</span>
-												</div>
-												<div class="flex items-center gap-2">
-													<Clock size={16} />
-													<span>{formatDate(workshop.date)} om {workshop.time}</span>
-												</div>
-											</div>
-										</Card.Content>
-										<Card.Footer class="pt-3 border-t">
-											<div class="flex items-center justify-between w-full">
-												<span class="text-sm font-medium">{workshop.teacherName}</span>
-												<span class="text-xs bg-muted px-2 py-1 rounded text-muted-foreground">
-													{workshop.duration}
-												</span>
-											</div>
-										</Card.Footer>
-									</Card.Root>
-								</div>
-								{/each}
-							</div>
-						{:else}
-							<div class="flex flex-col items-center justify-center py-12 text-center">
-								<Calendar size={48} class="text-muted-foreground mb-4" />
-								<h3 class="text-lg font-semibold mb-2">Geen workshops gepland</h3>
-								<p class="text-muted-foreground">
-									Je hebt momenteel geen workshops gepland voor de komende weken.
-								</p>
-							</div>
-						{/if}
-					</Card.Content>
-				</Card.Root>
-			</div>
-
-			<!-- Announcements Section -->
-			<div>
-				<Card.Root>
-					<Card.Header>
-						<div class="flex items-center gap-2">
-							<Bell size={24} class="text-primary" />
-							<Card.Title>Mededelingen</Card.Title>
-						</div>
-					</Card.Header>
-					<Card.Content>
-						{#if announcements.length > 0}
-							<div class="space-y-4">
-								{#each announcements as announcement (announcement.id)}
-									<Card.Root
-										class="p-4 {announcement.priority === 'high' ? 'border-l-4 border-l-destructive' : ''}"
-									>
-										<div class="flex items-start gap-3">
-											<div
-												class="flex items-center justify-center w-10 h-10 rounded-full flex-shrink-0 {announcement.type === 'success' ? 'bg-green-100 text-green-600' : announcement.type === 'warning' ? 'bg-yellow-100 text-yellow-600' : 'bg-blue-100 text-blue-600'}"
-											>
-												<svelte:component this={getAnnouncementIcon(announcement.type)} size={20} />
-											</div>
-											<div class="flex-1 min-w-0">
-												<h4 class="text-sm font-semibold mb-1">{announcement.title}</h4>
-												<p class="text-sm text-muted-foreground mb-2 leading-relaxed">
-													{announcement.message}
-												</p>
-												<span class="text-xs text-muted-foreground">
-													{formatDate(announcement.date)}
-												</span>
-											</div>
+		<div class="space-y-6">
+			<!-- Announcements Section - Now first -->
+			<Card.Root>
+				<Card.Header class="pb-3">
+					<div class="flex items-center gap-2">
+						<Bell size={20} class="text-primary" />
+						<Card.Title class="text-lg">Mededelingen</Card.Title>
+					</div>
+				</Card.Header>
+				<Card.Content>
+					{#if announcements.length > 0}
+						<div class="space-y-2">
+							{#each announcements as announcement (announcement.id)}
+								<div 
+									class="cursor-pointer rounded-lg border p-3 transition-colors hover:bg-muted/50 {announcement.priority === 'high' ? 'border-l-4 border-l-destructive' : ''}"
+									on:click={() => toggleAnnouncement(announcement.id)}
+									role="button"
+									tabindex="0"
+									on:keydown={(e) => e.key === 'Enter' && toggleAnnouncement(announcement.id)}
+								>
+									<div class="flex items-center gap-3">
+										<div class="flex items-center justify-center w-8 h-8 rounded-full flex-shrink-0 {announcement.type === 'success' ? 'bg-green-100 text-green-600' : announcement.type === 'warning' ? 'bg-yellow-100 text-yellow-600' : 'bg-blue-100 text-blue-600'}">
+											<svelte:component this={getAnnouncementIcon(announcement.type)} size={16} />
 										</div>
-									</Card.Root>
-								{/each}
-							</div>
-						{:else}
-							<div class="flex flex-col items-center justify-center py-12 text-center">
-								<Bell size={48} class="text-muted-foreground mb-4" />
-								<h3 class="text-lg font-semibold mb-2">Geen mededelingen</h3>
-								<p class="text-muted-foreground">Er zijn momenteel geen belangrijke mededelingen.</p>
-							</div>
-						{/if}
-					</Card.Content>
-				</Card.Root>
-			</div>
+										<div class="flex-1 min-w-0">
+											<h4 class="text-sm font-semibold">{announcement.title}</h4>
+											<span class="text-xs text-muted-foreground">{formatDate(announcement.date)}</span>
+										</div>
+										<div class="transition-transform {expandedAnnouncements.has(announcement.id) ? 'rotate-180' : ''}">
+											<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+												<path d="m6 9 6 6 6-6"/>
+											</svg>
+										</div>
+									</div>
+									{#if expandedAnnouncements.has(announcement.id)}
+										<div class="mt-3 pl-11 transition-all duration-200">
+											<p class="text-sm text-muted-foreground leading-relaxed">{announcement.message}</p>
+										</div>
+									{/if}
+								</div>
+							{/each}
+						</div>
+					{:else}
+						<div class="flex flex-col items-center justify-center py-8 text-center">
+							<Bell size={32} class="text-muted-foreground mb-3" />
+							<h3 class="font-semibold mb-1">Geen mededelingen</h3>
+							<p class="text-sm text-muted-foreground">Er zijn momenteel geen belangrijke mededelingen.</p>
+						</div>
+					{/if}
+				</Card.Content>
+			</Card.Root>
+
+			<!-- Upcoming Workshops Section - Now second -->
+			<Card.Root>
+				<Card.Header class="pb-3">
+					<div class="flex items-center justify-between">
+						<div class="flex items-center gap-2">
+							<Calendar size={20} class="text-primary" />
+							<Card.Title class="text-lg">Aankomende Workshops</Card.Title>
+						</div>
+						<span class="text-xs bg-muted px-2 py-1 rounded-full text-muted-foreground">
+							{upcomingWorkshops.length} workshops
+						</span>
+					</div>
+				</Card.Header>
+				<Card.Content>
+					{#if upcomingWorkshops.length > 0}
+						<div class="space-y-3">
+							{#each upcomingWorkshops as workshop (workshop.id)}
+								<div class="cursor-pointer hover:bg-muted/50 transition-colors rounded-lg p-3 border border-l-4 border-l-primary/20" on:click={() => handleWorkshopClick(workshop)} role="button" tabindex="0" on:keydown={(e) => e.key === 'Enter' && handleWorkshopClick(workshop)}>
+									<div class="flex items-start justify-between mb-2">
+										<h4 class="font-semibold text-sm">{workshop.schoolName}</h4>
+										<div class="flex items-center gap-1 text-xs font-medium px-2 py-1 rounded-full {workshop.status === 'confirmed' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}">
+											<svelte:component this={getStatusIcon(workshop.status)} size={12} />
+											<span>{workshop.status === 'confirmed' ? 'Bevestigd' : 'In behandeling'}</span>
+										</div>
+									</div>
+									<div class="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs text-muted-foreground mb-2">
+										<div class="flex items-center gap-1">
+											<Users size={14} />
+											<span>{workshop.group}</span>
+										</div>
+										<div class="flex items-center gap-1">
+											<MapPin size={14} />
+											<span>{workshop.title}</span>
+										</div>
+										<div class="flex items-center gap-1">
+											<Clock size={14} />
+											<span>{workshop.time}</span>
+										</div>
+									</div>
+									<div class="flex items-center justify-between">
+										<span class="text-xs font-medium">{formatDate(workshop.date)}</span>
+										<span class="text-xs bg-muted px-2 py-1 rounded text-muted-foreground">
+											{workshop.duration}
+										</span>
+									</div>
+								</div>
+							{/each}
+						</div>
+					{:else}
+						<div class="flex flex-col items-center justify-center py-8 text-center">
+							<Calendar size={32} class="text-muted-foreground mb-3" />
+							<h3 class="font-semibold mb-1">Geen workshops gepland</h3>
+							<p class="text-sm text-muted-foreground">
+								Je hebt momenteel geen workshops gepland voor de komende weken.
+							</p>
+						</div>
+					{/if}
+				</Card.Content>
+			</Card.Root>
 		</div>
 	{/if}
 </div>
