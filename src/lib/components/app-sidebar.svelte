@@ -39,6 +39,15 @@
 	// Admin status
 	let isAdmin = $state(false);
 
+	// PWA install prompt logic
+	let deferredPrompt: BeforeInstallPromptEvent | null = null;
+	let showPwaInstall = false;
+
+	type BeforeInstallPromptEvent = Event & {
+		prompt: () => void;
+		userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>;
+	};
+
 	function toggleTheme() {
 		themeStore.update((current) => {
 			const next = current === 'dark' ? 'light' : 'dark';
@@ -83,6 +92,19 @@
 		return () => {
 			document.removeEventListener('click', handleClickOutside);
 		};
+
+		// PWA install detection
+		window.addEventListener('beforeinstallprompt', (e) => {
+			e.preventDefault();
+			deferredPrompt = e;
+			showPwaInstall = true;
+		});
+
+		// Detect if running as PWA
+		const isStandalone = window.matchMedia('(display-mode: standalone)').matches || (typeof window.navigator.standalone !== 'undefined' && (window.navigator as any).standalone === true);
+		if (isStandalone) {
+			showPwaInstall = false;
+		}
 	});
 
 	function handleMenuClick() {
@@ -123,6 +145,18 @@
 		closeSettingsMenu();
 		if (sidebar.isMobile) {
 			sidebar.setOpenMobile(false);
+		}
+	}
+
+	function handlePwaInstall() {
+		if (deferredPrompt) {
+			deferredPrompt.prompt();
+			deferredPrompt.userChoice.then((choiceResult: { outcome: 'accepted' | 'dismissed' }) => {
+				if (choiceResult.outcome === 'accepted') {
+					showPwaInstall = false;
+				}
+				deferredPrompt = null;
+			});
 		}
 	}
 </script>
@@ -254,6 +288,12 @@
 							<MessageSquare size={16} />
 							Mededelingen
 						</a>
+						{#if showPwaInstall}
+							<button type="button" class="flex items-center gap-2 rounded px-3 py-2 text-sm text-foreground hover:bg-muted transition-colors w-full" on:click={handlePwaInstall}>
+								<GalleryVerticalEndIcon size={16} />
+								App installeren
+							</button>
+						{/if}
 					{/if}
 				</div>
 			</div>
