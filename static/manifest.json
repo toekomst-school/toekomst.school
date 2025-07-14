@@ -1,0 +1,81 @@
+{
+  "name": "Toekomst School",
+  "short_name": "Toekomst",
+  "description": "Planning en presentatie app voor Toekomst School",
+  "start_url": "/dashboard",
+  "display": "standalone",
+  "background_color": "#1d1f20",
+  "theme_color": "#3ba39b",
+  "orientation": "portrait-primary",
+  "scope": "/",
+  "categories": ["education", "productivity"],
+  "lang": "nl",
+  "icons": [
+    {
+      "src": "/toekomst_logo.svg",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/toekomst_logo.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/toekomst_logo.svg",
+      "sizes": "192x192", 
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/favicon.png",
+      "sizes": "32x32",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Mijn Planning",
+      "short_name": "Planning",
+      "description": "Bekijk je persoonlijke planning",
+      "url": "/planning",
+      "icons": [
+        {
+          "src": "/favicon.png",
+          "sizes": "192x192"
+        }
+      ]
+    },
+    {
+      "name": "Connect",
+      "short_name": "Connect", 
+      "description": "Verbind met presentatie",
+      "url": "/connect",
+      "icons": [
+        {
+          "src": "/favicon.png",
+          "sizes": "192x192"
+        }
+      ]
+    },
+    {
+      "name": "Dashboard",
+      "short_name": "Dashboard",
+      "description": "Overzicht dashboard",
+      "url": "/dashboard", 
+      "icons": [
+        {
+          "src": "/favicon.png",
+          "sizes": "192x192"
+        }
+      ]
+    }
+  ],
+  "prefer_related_applications": false,
+  "edge_side_panel": {
+    "preferred_width": 400
+  }
+}
