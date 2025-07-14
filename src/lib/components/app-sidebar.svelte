@@ -41,7 +41,9 @@
 
 	// PWA install prompt logic
 	let deferredPrompt: BeforeInstallPromptEvent | null = null;
-	let showPwaInstall = false;
+	let isInstallable = false;
+	let isInstalled = false;
+	let installButtonText = 'App installeren';
 
 	type BeforeInstallPromptEvent = Event & {
 		prompt: () => void;
@@ -93,18 +95,30 @@
 			document.removeEventListener('click', handleClickOutside);
 		};
 
-		// PWA install detection
+		// Detect if running as PWA (standalone)
+		const isStandalone = window.matchMedia('(display-mode: standalone)').matches || (window.navigator as any).standalone === true;
+		if (isStandalone) {
+			isInstalled = true;
+			isInstallable = false;
+			installButtonText = 'Geïnstalleerd';
+			return;
+		}
+
+		// Listen for beforeinstallprompt
 		window.addEventListener('beforeinstallprompt', (e) => {
 			e.preventDefault();
 			deferredPrompt = e as BeforeInstallPromptEvent;
-			showPwaInstall = true;
+			isInstallable = true;
+			isInstalled = false;
+			installButtonText = 'App installeren';
 		});
 
-		// Detect if running as PWA
-		const isStandalone = window.matchMedia('(display-mode: standalone)').matches || (typeof window.navigator.standalone !== 'undefined' && (window.navigator as any).standalone === true);
-		if (isStandalone) {
-			showPwaInstall = false;
-		}
+		// Listen for appinstalled
+		window.addEventListener('appinstalled', () => {
+			isInstalled = true;
+			isInstallable = false;
+			installButtonText = 'Geïnstalleerd';
+		});
 	});
 
 	function handleMenuClick() {
@@ -153,12 +167,12 @@
 			deferredPrompt.prompt();
 			deferredPrompt.userChoice.then((choiceResult: { outcome: 'accepted' | 'dismissed' }) => {
 				if (choiceResult.outcome === 'accepted') {
-					showPwaInstall = false;
+					isInstalled = true;
+					isInstallable = false;
+					installButtonText = 'Geïnstalleerd';
 				}
 				deferredPrompt = null;
 			});
-		} else {
-			alert('Installeren als app is momenteel niet beschikbaar. Mogelijk heb je deze prompt al eerder genegeerd of je browser ondersteunt het niet.');
 		}
 	}
 </script>
@@ -291,10 +305,12 @@
 							Mededelingen
 						</a>
 					{/if}
-					<button type="button" class="flex items-center gap-2 rounded px-3 py-2 text-sm text-foreground hover:bg-muted transition-colors w-full" on:click={handlePwaInstall} disabled={!deferredPrompt}>
-						<GalleryVerticalEndIcon size={16} />
-						App installeren
-					</button>
+					{#if isInstallable || isInstalled}
+						<button type="button" class="flex items-center gap-2 rounded px-3 py-2 text-sm text-foreground hover:bg-muted transition-colors w-full" on:click={handlePwaInstall} disabled={!isInstallable}>
+							<GalleryVerticalEndIcon size={16} />
+							{installButtonText}
+						</button>
+					{/if}
 				</div>
 			</div>
 		{/if}
