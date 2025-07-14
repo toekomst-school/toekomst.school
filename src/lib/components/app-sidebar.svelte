@@ -157,6 +157,8 @@
 				}
 				deferredPrompt = null;
 			});
+		} else {
+			alert('Installeren als app is momenteel niet beschikbaar. Mogelijk heb je deze prompt al eerder genegeerd of je browser ondersteunt het niet.');
 		}
 	}
 </script>
@@ -289,12 +291,10 @@
 							Mededelingen
 						</a>
 					{/if}
-					{#if showPwaInstall}
-						<button type="button" class="flex items-center gap-2 rounded px-3 py-2 text-sm text-foreground hover:bg-muted transition-colors w-full" on:click={handlePwaInstall}>
-							<GalleryVerticalEndIcon size={16} />
-							App installeren
-						</button>
-					{/if}
+					<button type="button" class="flex items-center gap-2 rounded px-3 py-2 text-sm text-foreground hover:bg-muted transition-colors w-full" on:click={handlePwaInstall} disabled={!deferredPrompt}>
+						<GalleryVerticalEndIcon size={16} />
+						App installeren
+					</button>
 				</div>
 			</div>
 		{/if}
