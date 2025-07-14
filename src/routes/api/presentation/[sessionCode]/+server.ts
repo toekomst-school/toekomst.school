@@ -1,25 +1,15 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-
-// Simple in-memory store for presentation sessions
-const sessions = new Map<string, {
-	currentSlide: number;
-	totalSlides: number;
-	connectedDevices: number;
-	lastUpdate: number;
-	slides?: string;
-	workshopStartTime?: string;
-	workshopEndTime?: string;
-	workshopData?: any;
-}>();
+import { sessionStore } from '$lib/server/sessionStore.js';
 
 export const GET: RequestHandler = async ({ params }) => {
 	const { sessionCode } = params;
 	
-	const session = sessions.get(sessionCode);
-	if (!session) {
+	if (!sessionStore.hasSession(sessionCode)) {
 		return json({ error: 'Session not found' }, { status: 404 });
 	}
+	
+	const session = sessionStore.getSession(sessionCode);
 	
 	const responseData = {
 		currentSlide: session.currentSlide,
@@ -31,7 +21,6 @@ export const GET: RequestHandler = async ({ params }) => {
 		workshopEndTime: session.workshopEndTime,
 		workshopData: session.workshopData
 	};
-	
 	
 	return json(responseData);
 };
@@ -51,65 +40,69 @@ export const POST: RequestHandler = async ({ params, request }) => {
 		workshopTitle: data.workshopData?.title
 	});
 	
-	// Initialize session if it doesn't exist
-	if (!sessions.has(sessionCode)) {
-		sessions.set(sessionCode, {
-			currentSlide: 0,
-			totalSlides: 0,
-			connectedDevices: 0,
-			lastUpdate: Date.now(),
-			slides: ''
-		});
-	}
-	
-	const session = sessions.get(sessionCode)!;
+	const session = sessionStore.getSession(sessionCode);
 	
 	switch (data.type) {
 		case 'init-presenter':
-			session.totalSlides = data.totalSlides || 0;
-			session.slides = data.slides || '';
-			session.lastUpdate = Date.now();
+			sessionStore.updateSlides(sessionCode, data.slides || '', data.totalSlides || 0);
 			break;
 			
 		case 'slide-change':
-			session.currentSlide = data.current;
-			session.totalSlides = data.total;
-			session.lastUpdate = Date.now();
+			sessionStore.updateSlideState(sessionCode, data.current, data.total);
+			// Also broadcast to WebSocket controllers
+			sessionStore.broadcastToControllers(sessionCode, {
+				type: 'slide-update',
+				current: data.current,
+				total: data.total
+			});
 			break;
 			
 		case 'connect-device':
-			session.connectedDevices = Math.max(0, session.connectedDevices + 1);
-			session.lastUpdate = Date.now();
+			sessionStore.incrementDeviceCount(sessionCode);
 			
 			// If slides data is provided, update the session
 			if (data.slides) {
-				session.slides = data.slides;
-				session.totalSlides = data.totalSlides || 0;
+				sessionStore.updateSlides(sessionCode, data.slides, data.totalSlides || 0);
 			}
 			break;
 			
 		case 'disconnect-device':
-			session.connectedDevices = Math.max(0, session.connectedDevices - 1);
-			session.lastUpdate = Date.now();
+			sessionStore.decrementDeviceCount(sessionCode);
 			break;
 			
 		case 'update-slides':
 			// Update slides from connect page lesson selection
-			session.slides = data.slides || '';
-			session.totalSlides = data.totalSlides || 0;
-			session.lastUpdate = Date.now();
+			sessionStore.updateSlides(sessionCode, data.slides || '', data.totalSlides || 0);
 			
 			// Include full workshop data if provided
 			if (data.workshopData) {
-				session.workshopData = data.workshopData;
-				session.workshopStartTime = data.workshopStartTime;
-				session.workshopEndTime = data.workshopEndTime;
+				sessionStore.updateWorkshopData(
+					sessionCode, 
+					data.workshopData, 
+					data.workshopStartTime, 
+					data.workshopEndTime
+				);
 				console.log('🔄 API SERVER - Storing full workshop data in session:', {
 					sessionCode,
 					workshopId: data.workshopData.$id,
 					title: data.workshopData.title,
 					start: data.workshopStartTime,
 					end: data.workshopEndTime
+				});
+				
+				// Broadcast lesson/workshop update to WebSocket connections
+				sessionStore.broadcastToControllers(sessionCode, {
+					type: 'lesson-update',
+					slides: data.slides,
+					totalSlides: data.totalSlides,
+					workshopData: data.workshopData
+				});
+				
+				sessionStore.sendToPresenter(sessionCode, {
+					type: 'lesson-update',
+					slides: data.slides,
+					totalSlides: data.totalSlides,
+					workshopData: data.workshopData
 				});
 			} else {
 				console.log('❌ API SERVER - No workshop data in request:', {
@@ -133,12 +126,22 @@ export const POST: RequestHandler = async ({ params, request }) => {
 			break;
 			
 		case 'command':
-			// Store the command for the presenter to pick up
-			(session as any).lastCommand = {
+			// Add command to session store
+			const commandId = sessionStore.addCommand(sessionCode, data.command);
+			
+			// Also try to send directly to WebSocket presenter if available
+			const sent = sessionStore.sendToPresenter(sessionCode, {
+				type: 'remote-command',
 				command: data.command,
-				timestamp: Date.now()
-			};
-			session.lastUpdate = Date.now();
+				commandId
+			});
+			
+			console.log('🎮 Command processed:', {
+				sessionCode,
+				command: data.command,
+				commandId,
+				sentViaWebSocket: sent
+			});
 			break;
 	}
 	
@@ -147,6 +150,6 @@ export const POST: RequestHandler = async ({ params, request }) => {
 
 export const DELETE: RequestHandler = async ({ params }) => {
 	const { sessionCode } = params;
-	sessions.delete(sessionCode);
+	sessionStore.deleteSession(sessionCode);
 	return json({ success: true });
 };

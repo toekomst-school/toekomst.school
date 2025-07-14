@@ -2,6 +2,7 @@
 	import { onMount } from 'svelte';
 	import { databases } from '$lib/appwrite';
 	import TeacherForm from '$lib/components/TeacherForm.svelte';
+	import { user } from '$lib/stores/auth.js';
 
 	const databaseId = 'lessen'; // Change if your DB is named differently
 	const collectionId = 'vakdocent';
@@ -13,6 +14,13 @@
 	let isEdit = false;
 	let editTeacherId: string | null = null;
 	let formInitialValues = {};
+
+	// User role permissions
+	$: userRole = $user?.labels?.[0] || 'student';
+	$: isVakdocent = userRole === 'vakdocent';
+	$: isTeacher = userRole === 'teacher' || userRole === 'vakdocent';
+	$: canEdit = isVakdocent;
+	$: canView = isTeacher;
 
 	async function fetchTeachers() {
 		loading = true;
@@ -84,8 +92,25 @@
 	}
 </script>
 
-<h1>Team: Vakdocenten</h1>
-<button class="cta mb-4" on:click={openAddModal}>+ Vakdocent toevoegen</button>
+{#if !canView}
+	<div class="bg-destructive/10 border border-destructive/20 rounded-md p-4 mb-4">
+		<p class="text-destructive">Je hebt geen toegang tot deze pagina. Alleen docenten en vakdocenten kunnen teaminformatie bekijken.</p>
+	</div>
+{:else}
+	<div class="flex items-center justify-between mb-4">
+		<h1>Team: Vakdocenten</h1>
+		{#if canEdit}
+			<button class="cta" on:click={openAddModal}>+ Vakdocent toevoegen</button>
+		{/if}
+	</div>
+	
+	{#if !canEdit}
+		<div class="bg-muted border rounded-md p-3 mb-4">
+			<p class="text-sm text-muted-foreground">
+				ℹ️ Je bekijkt de teamoverzicht als docent. Alleen vakdocenten kunnen profielen bewerken.
+			</p>
+		</div>
+	{/if}
 
 {#if loading}
 	<p>Bezig met laden...</p>
@@ -124,18 +149,23 @@
 					<td>{teacher.address}</td>
 					<td>{teacher.bio}</td>
 					<td>
-						<button class="cta" on:click={() => openEditModal(teacher)}>Bewerk</button>
-						<button class="cta ml-2 bg-red-600" on:click={() => deleteTeacher(teacher.$id)}
-							>Verwijder</button
-						>
+						{#if canEdit}
+							<button class="cta" on:click={() => openEditModal(teacher)}>Bewerk</button>
+							<button class="cta ml-2 bg-red-600" on:click={() => deleteTeacher(teacher.$id)}
+								>Verwijder</button
+							>
+						{:else}
+							<span class="text-sm text-muted-foreground">Alleen weergeven</span>
+						{/if}
 					</td>
 				</tr>
 			{/each}
 		</tbody>
 	</table>
 {/if}
+{/if}
 
-{#if showModal}
+{#if showModal && canEdit}
 	<div class="modal-backdrop" on:click={closeModal}></div>
 	<div class="modal" on:click|stopPropagation>
 		<TeacherForm

@@ -39,7 +39,7 @@
 			data-sidebar="sidebar"
 			data-slot="sidebar"
 			data-mobile="true"
-			class="bg-sidebar text-sidebar-foreground w-(--sidebar-width) p-0 [&>button]:hidden"
+			class="text-sidebar-foreground w-(--sidebar-width) p-0 [&>button]:hidden mobile-sidebar-bg"
 			style="--sidebar-width: {SIDEBAR_WIDTH_MOBILE};"
 			{side}
 		>
@@ -99,3 +99,13 @@
 		</div>
 	</div>
 {/if}
+
+<style>
+	:global(.mobile-sidebar-bg) {
+		background-color: rgba(255, 255, 255, 0.8) !important;
+	}
+	
+	:global(.dark .mobile-sidebar-bg) {
+		background-color: rgba(0, 0, 0, 0.8) !important;
+	}
+</style>

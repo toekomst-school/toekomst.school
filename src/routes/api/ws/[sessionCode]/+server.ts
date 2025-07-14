@@ -1,12 +1,5 @@
 import type { RequestHandler } from './$types';
-
-// Store active sessions and their connections
-const sessions = new Map<string, {
-	presenter: WebSocket | null;
-	controllers: Set<WebSocket>;
-	currentSlide: number;
-	totalSlides: number;
-}>();
+import { sessionStore } from '$lib/server/sessionStore.js';
 
 export const GET: RequestHandler = async ({ params, request }) => {
 	const { sessionCode } = params;
@@ -23,17 +16,8 @@ export const GET: RequestHandler = async ({ params, request }) => {
 	
 	const socket = server;
 
-	// Initialize session if it doesn't exist
-	if (!sessions.has(sessionCode)) {
-		sessions.set(sessionCode, {
-			presenter: null,
-			controllers: new Set(),
-			currentSlide: 0,
-			totalSlides: 0
-		});
-	}
-
-	const session = sessions.get(sessionCode)!;
+	// Get or create session using shared store
+	const session = sessionStore.getSession(sessionCode);
 
 	socket.onopen = () => {
 		console.log(`WebSocket connected to session: ${sessionCode}`);
@@ -42,13 +26,27 @@ export const GET: RequestHandler = async ({ params, request }) => {
 	socket.onmessage = (event) => {
 		try {
 			const data = JSON.parse(event.data);
-			console.log(`Message from ${sessionCode}:`, data);
+			console.log(`WebSocket message from ${sessionCode}:`, data);
 
 			switch (data.type) {
 				case 'register-presenter':
-					session.presenter = socket;
-					session.totalSlides = data.totalSlides || 0;
-					broadcastToControllers(sessionCode, {
+					sessionStore.registerPresenter(sessionCode, socket);
+					if (data.totalSlides) {
+						sessionStore.updateSlideState(sessionCode, session.currentSlide, data.totalSlides);
+					}
+					
+					// Send current session state to presenter
+					socket.send(JSON.stringify({
+						type: 'session-state',
+						currentSlide: session.currentSlide,
+						totalSlides: session.totalSlides,
+						connectedDevices: session.connectedDevices,
+						slides: session.slides,
+						workshopData: session.workshopData
+					}));
+					
+					// Broadcast to controllers
+					sessionStore.broadcastToControllers(sessionCode, {
 						type: 'slide-update',
 						current: session.currentSlide,
 						total: session.totalSlides
@@ -56,26 +54,27 @@ export const GET: RequestHandler = async ({ params, request }) => {
 					break;
 
 				case 'register-controller':
-					session.controllers.add(socket);
+					sessionStore.registerController(sessionCode, socket);
+					
 					// Send current slide info to new controller
 					socket.send(JSON.stringify({
 						type: 'slide-update',
 						current: session.currentSlide,
 						total: session.totalSlides
 					}));
+					
 					// Notify presenter about new connection
-					if (session.presenter) {
-						session.presenter.send(JSON.stringify({
-							type: 'controller-count',
-							count: session.controllers.size
-						}));
-					}
+					sessionStore.sendToPresenter(sessionCode, {
+						type: 'controller-count',
+						count: session.controllers.size
+					});
 					break;
 
 				case 'slide-change':
-					session.currentSlide = data.current;
-					session.totalSlides = data.total;
-					broadcastToControllers(sessionCode, {
+					sessionStore.updateSlideState(sessionCode, data.current, data.total);
+					
+					// Broadcast to all controllers
+					sessionStore.broadcastToControllers(sessionCode, {
 						type: 'slide-update',
 						current: data.current,
 						total: data.total
@@ -83,13 +82,27 @@ export const GET: RequestHandler = async ({ params, request }) => {
 					break;
 
 				case 'command':
-					// Forward command from controller to presenter
-					if (session.presenter && session.presenter.readyState === WebSocket.OPEN) {
-						session.presenter.send(JSON.stringify({
-							type: 'remote-command',
-							command: data.command
-						}));
-					}
+					// Add command to store
+					const commandId = sessionStore.addCommand(sessionCode, data.command);
+					
+					// Forward directly to presenter
+					const sent = sessionStore.sendToPresenter(sessionCode, {
+						type: 'remote-command',
+						command: data.command,
+						commandId
+					});
+					
+					console.log('🎮 WebSocket command forwarded:', {
+						sessionCode,
+						command: data.command,
+						commandId,
+						sent
+					});
+					break;
+
+				case 'ping':
+					// Respond to ping with pong
+					socket.send(JSON.stringify({ type: 'pong' }));
 					break;
 			}
 		} catch (error) {
@@ -100,46 +113,22 @@ export const GET: RequestHandler = async ({ params, request }) => {
 	socket.onclose = () => {
 		console.log(`WebSocket disconnected from session: ${sessionCode}`);
 		
-		const session = sessions.get(sessionCode);
-		if (session) {
-			// Remove from controllers if it was a controller
-			session.controllers.delete(socket);
-			
-			// Clear presenter if it was the presenter
-			if (session.presenter === socket) {
-				session.presenter = null;
-			}
-
-			// Update controller count for presenter
-			if (session.presenter) {
-				session.presenter.send(JSON.stringify({
-					type: 'controller-count',
-					count: session.controllers.size
-				}));
-			}
-
-			// Clean up empty sessions
-			if (!session.presenter && session.controllers.size === 0) {
-				sessions.delete(sessionCode);
-			}
-		}
+		sessionStore.removeConnection(sessionCode, socket);
+		
+		// Update controller count for presenter if still connected
+		const session = sessionStore.getSession(sessionCode);
+		sessionStore.sendToPresenter(sessionCode, {
+			type: 'controller-count',
+			count: session.controllers.size
+		});
 	};
 
 	socket.onerror = (error) => {
 		console.error(`WebSocket error for session ${sessionCode}:`, error);
 	};
 
-	return response;
-};
-
-function broadcastToControllers(sessionCode: string, message: any) {
-	const session = sessions.get(sessionCode);
-	if (!session) return;
-
-	const messageStr = JSON.stringify(message);
-	session.controllers.forEach((controller) => {
-		if (controller.readyState === WebSocket.OPEN) {
-			controller.send(messageStr);
-		}
+	return new Response(null, {
+		status: 101,
+		webSocket: client
 	});
-}
+};

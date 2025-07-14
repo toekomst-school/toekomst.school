@@ -2,6 +2,7 @@
 	import QrCode from 'svelte-qrcode';
 	import { onMount, onDestroy } from 'svelte';
 	import { marked } from 'marked';
+	import { createConnectionManager, type ConnectionManager, type SessionData } from '$lib/stores/connectionManager.js';
 
 	let sessionCode = '';
 	let isPresenting = false;
@@ -9,11 +10,15 @@
 	let connectedDevices = 0;
 	let currentSlide = 0;
 	let totalSlides = 5; // Demo slides
-	let pollInterval: NodeJS.Timeout;
-	let commandPollInterval: NodeJS.Timeout;
-	let lastCommandCheck = 0;
+	// Connection manager (replaces polling)
+	let connectionManager: ConnectionManager | null = null;
+	let connectionState = 'disconnected';
+	let connectionError = '';
+	let isWebSocketConnected = false;
 	let slides = '';
 	let parsedSlides: string[] = [];
+	let slideNotes: string[] = [];
+	let currentSlideNotes = '';
 	let presentationComponent: any;
 	let revealInstance: any;
 	let revealLoaded = false;
@@ -30,11 +35,11 @@
 	let currentTime = new Date();
 	let workshopData = null;
 
-	// Generate a random 6-character code (A-Z, 0-9)
+	// Generate a random 4-character code (A-Z, 0-9)
 	function generateCode() {
 		const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
 		let result = '';
-		for (let i = 0; i < 6; i++) {
+		for (let i = 0; i < 4; i++) {
 			result += chars.charAt(Math.floor(Math.random() * chars.length));
 		}
 		return result;
@@ -53,6 +58,37 @@
 		if (!markdown) return [];
 		// Split by slide separators (---) and filter out empty slides
 		return markdown.split(/^---$/gm).filter(slide => slide.trim());
+	}
+
+	function parseMarkdownSlidesWithNotes(markdown: string): { slides: string[], notes: string[] } {
+		if (!markdown) return { slides: [], notes: [] };
+		
+		const slideTexts = markdown.split(/^---$/gm).filter(slide => slide.trim());
+		const slides: string[] = [];
+		const notes: string[] = [];
+		
+		slideTexts.forEach(slideText => {
+			// Look for speaker notes in HTML comments (<!-- Note: ... -->)
+			const htmlCommentMatch = slideText.match(/<!--\s*[Nn]ote[s]?:\s*(.*?)\s*-->/s);
+			// Look for speaker notes in plain text (Note: ...)
+			const plainTextMatch = slideText.match(/(?:^|\n)[Nn]ote[s]?:\s*(.+?)(?=\n|$)/s);
+			
+			let noteContent = '';
+			let cleanSlideContent = slideText;
+			
+			if (htmlCommentMatch) {
+				noteContent = htmlCommentMatch[1].trim();
+				cleanSlideContent = slideText.replace(/<!--\s*[Nn]ote[s]?:.*?-->/s, '').trim();
+			} else if (plainTextMatch) {
+				noteContent = plainTextMatch[1].trim();
+				cleanSlideContent = slideText.replace(/(?:^|\n)[Nn]ote[s]?:.*$/m, '').trim();
+			}
+			
+			slides.push(cleanSlideContent);
+			notes.push(noteContent);
+		});
+		
+		return { slides, notes };
 	}
 
 	function updateWorkshopTimeProgress() {
@@ -182,7 +218,11 @@
 					if (data.slides) {
 						slides = data.slides;
 						totalSlides = countSlidesInMarkdown(slides);
-						parsedSlides = parseMarkdownSlides(slides);
+						const parsed = parseMarkdownSlidesWithNotes(slides);
+						parsedSlides = parsed.slides;
+						slideNotes = parsed.notes;
+						// Update current slide notes
+						currentSlideNotes = slideNotes[currentSlide] || '';
 					}
 					
 					// Start the lesson automatically for existing sessions
@@ -257,7 +297,10 @@
 			if (slides) {
 				const parsed = parseMarkdownSlidesWithNotes(slides);
 				parsedSlides = parsed.slides;
+				slideNotes = parsed.notes;
 				totalSlides = parsed.slides.length;
+				// Update current slide notes
+				currentSlideNotes = slideNotes[currentSlide] || '';
 			}
 		} catch (error) {
 			console.error('Error loading lesson:', error);
@@ -279,46 +322,16 @@
 			if (slides) {
 				const parsed = parseMarkdownSlidesWithNotes(slides);
 				parsedSlides = parsed.slides;
+				slideNotes = parsed.notes;
 				totalSlides = parsed.slides.length;
+				// Update current slide notes
+				currentSlideNotes = slideNotes[currentSlide] || '';
 			}
 		} catch (error) {
 			console.error('Error loading workshop:', error);
 		}
 	}
 
-	function parseMarkdownSlidesWithNotes(markdown: string): { slides: string[], notes: string[] } {
-		if (!markdown) return { slides: [], notes: [] };
-		
-		// Split by slide separators (---) and filter out empty slides
-		const rawSlides = markdown.split(/^---$/gm).filter(slide => slide.trim());
-		const slides: string[] = [];
-		const notes: string[] = [];
-		
-		rawSlides.forEach(slideContent => {
-			// Look for notes section (<!-- Note: ... --> or Note: ...)
-			const noteMatch = slideContent.match(/<!--\s*[Nn]ote[s]?:\s*(.*?)\s*-->/s) || 
-							slideContent.match(/^[Nn]ote[s]?:\s*(.*)$/m);
-			
-			if (noteMatch) {
-				// Extract the note content
-				const noteContent = noteMatch[1].trim();
-				notes.push(noteContent);
-				
-				// Remove the note from the slide content
-				const cleanSlideContent = slideContent
-					.replace(/<!--\s*[Nn]ote[s]?:.*?-->/s, '')
-					.replace(/^[Nn]ote[s]?:.*$/m, '')
-					.trim();
-				slides.push(cleanSlideContent);
-			} else {
-				// No notes for this slide
-				slides.push(slideContent.trim());
-				notes.push('');
-			}
-		});
-		
-		return { slides, notes };
-	}
 
 	async function loadRevealJS() {
 		return new Promise((resolve, reject) => {
@@ -340,10 +353,127 @@
 	}
 
 	onDestroy(() => {
-		if (pollInterval) clearInterval(pollInterval);
-		if (commandPollInterval) clearInterval(commandPollInterval);
+		if (connectionManager) {
+			connectionManager.disconnect();
+		}
 		stopTimeTracking();
 	});
+
+	// Connection manager callback functions
+	function handleSlideUpdate(current: number, total: number) {
+		// This is called when other devices change slides
+		// For presenter, this would be if multiple presenters somehow existed
+		console.log('🔄 Slide update received:', { current, total });
+	}
+
+	function handleCommand(command: string, commandId: string) {
+		console.log('🎮 Command received:', { command, commandId });
+		
+		if (!revealInstance) return;
+
+		switch (command) {
+			case 'next':
+				revealInstance.next();
+				break;
+			case 'prev':
+				revealInstance.prev();
+				break;
+			case 'first':
+				revealInstance.slide(0);
+				break;
+			case 'last':
+				revealInstance.slide(totalSlides - 1);
+				break;
+			case 'second-to-last':
+				revealInstance.slide(Math.max(0, totalSlides - 2));
+				break;
+		}
+	}
+
+	function handleLessonUpdate(slides: string, totalSlides: number, workshopData?: any) {
+		console.log('📚 Lesson update received:', { slidesLength: slides.length, totalSlides, hasWorkshopData: !!workshopData });
+		
+		// Update slides data
+		if (slides) {
+			slides = slides;
+			const parsed = parseMarkdownSlidesWithNotes(slides);
+			parsedSlides = parsed.slides;
+			slideNotes = parsed.notes;
+			totalSlides = parsed.slides.length + 1; // +1 for end slide
+			currentSlideNotes = slideNotes[currentSlide] || '';
+		}
+
+		// Update workshop data
+		if (workshopData) {
+			workshopData = workshopData;
+			workshopStartTime = workshopData.start;
+			workshopEndTime = workshopData.end;
+			startTimeTracking();
+		}
+
+		// Reinitialize Reveal.js with new slides if we're already presenting
+		if (isPresenting && revealInstance) {
+			initializeRevealJS();
+		} else if (!isPresenting && slides) {
+			// Start lesson if we weren't presenting yet
+			startLesson();
+		}
+	}
+
+	function handleControllerCount(count: number) {
+		connectedDevices = count;
+		console.log('👥 Controller count updated:', count);
+	}
+
+	function handleSessionState(state: SessionData) {
+		console.log('📊 Session state received:', state);
+		
+		// Update all session data
+		connectedDevices = state.connectedDevices;
+		
+		// Update slides if provided
+		if (state.slides && state.slides !== slides) {
+			handleLessonUpdate(state.slides, state.totalSlides, state.workshopData);
+		}
+
+		// Update workshop timing
+		if (state.workshopStartTime && state.workshopEndTime) {
+			workshopStartTime = state.workshopStartTime;
+			workshopEndTime = state.workshopEndTime;
+			workshopData = state.workshopData;
+			startTimeTracking();
+		}
+	}
+
+	function setupConnectionManager() {
+		if (!sessionCode) return;
+
+		connectionManager = createConnectionManager({
+			sessionCode,
+			isPresenter: true,
+			onSlideUpdate: handleSlideUpdate,
+			onCommand: handleCommand,
+			onLessonUpdate: handleLessonUpdate,
+			onControllerCount: handleControllerCount,
+			onSessionState: handleSessionState
+		});
+
+		// Subscribe to connection state changes
+		connectionManager.state.subscribe(state => {
+			connectionState = state;
+		});
+
+		connectionManager.error.subscribe(error => {
+			connectionError = error;
+		});
+
+		connectionManager.isConnected.subscribe(connected => {
+			isWebSocketConnected = connectionManager?.getConnectionInfo().isWebSocket || false;
+		});
+
+		// Connect to the session
+		connectionManager.connect();
+	}
 
 	async function startLesson() {
 		console.log('startLesson called, parsedSlides:', parsedSlides.length);
@@ -407,6 +537,8 @@
 			// Listen for slide changes
 			revealInstance.addEventListener('slidechanged', (event: any) => {
 				currentSlide = event.indexh;
+				// Update current slide notes
+				currentSlideNotes = slideNotes[currentSlide] || '';
 				updateSlide();
 				
 				// Trigger confetti only on the hardcoded workshop end slide
@@ -483,7 +615,11 @@
 					if (data.slides && data.slides !== slides) {
 						slides = data.slides;
 						totalSlides = data.totalSlides || countSlidesInMarkdown(slides);
-						parsedSlides = parseMarkdownSlides(slides);
+						const parsed = parseMarkdownSlidesWithNotes(slides);
+						parsedSlides = parsed.slides;
+						slideNotes = parsed.notes;
+						// Update current slide notes
+						currentSlideNotes = slideNotes[currentSlide] || '';
 						
 						// Update workshop data if provided
 						if (data.workshopData) {
@@ -556,6 +692,8 @@
 								// Listen for slide changes
 								revealInstance.addEventListener('slidechanged', (event: any) => {
 									currentSlide = event.indexh;
+									// Update current slide notes
+									currentSlideNotes = slideNotes[currentSlide] || '';
 									updateSlide();
 									
 									// Trigger confetti only on the hardcoded workshop end slide
@@ -789,7 +927,11 @@
 					if (data.slides && data.slides.trim() && !isPresenting) {
 						slides = data.slides;
 						totalSlides = data.totalSlides || countSlidesInMarkdown(slides);
-						parsedSlides = parseMarkdownSlides(slides);
+						const parsed = parseMarkdownSlidesWithNotes(slides);
+						parsedSlides = parsed.slides;
+						slideNotes = parsed.notes;
+						// Update current slide notes
+						currentSlideNotes = slideNotes[currentSlide] || '';
 						
 						// Auto-start the presentation
 						await startLesson();
@@ -875,8 +1017,6 @@
 						{#if workshopData.group}
 							<span class="class-name">{workshopData.group}</span>
 						{/if}
-					{:else}
-						<span class="session-fallback">Presentatie Actief</span>
 					{/if}
 				</div>
 				<div class="controls-group">
@@ -1208,15 +1348,6 @@
 	.logo {
 		height: 2.5rem;
 		width: auto;
-		filter: 
-			brightness(0) 
-			saturate(100%) 
-			invert(64%) 
-			sepia(45%) 
-			saturate(1158%) 
-			hue-rotate(133deg) 
-			brightness(95%) 
-			contrast(89%);
 	}
 
 	.workshop-info {
@@ -1742,4 +1873,5 @@
 			gap: 1rem;
 		}
 	}
+
 </style>

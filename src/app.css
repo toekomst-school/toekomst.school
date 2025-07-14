@@ -76,6 +76,29 @@ a:hover {
 	color: var(--accent);
 }
 
+/* Nuclear option: Override CSS variables for sidebar in light mode */
+.light [data-sidebar] {
+	--warning: var(--foreground);
+}
+
+/* Alternative approach: Override global a selector for light mode only */
+.light a:not(.keep-orange-color) {
+	color: var(--foreground);
+}
+
+.light a:not(.keep-orange-color):hover {
+	color: var(--accent);
+}
+
+/* Override teal color for sidebar bottom buttons in light mode */
+.light [data-sidebar] .text-teal-500 {
+	color: var(--foreground) !important;
+}
+
+.light [data-sidebar] .text-teal-500:hover {
+	color: var(--accent) !important;
+}
+
 hr,
 .divider {
 	border: none;
