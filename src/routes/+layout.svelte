@@ -206,6 +206,7 @@
 			console.error(e);
 		}
 	}
+	
 </script>
 
 {#if $user}
@@ -236,6 +237,7 @@
 			</SheetContent>
 		</Sheet>
 	{/if}
+	
 	
 	{#if shouldShowSidebar}
 		<Sidebar.Provider style="--sidebar-width: 19rem;">

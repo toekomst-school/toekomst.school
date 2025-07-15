@@ -2,14 +2,66 @@
 	export let event: any;
 	export let currentUser: any = null;
 	export let isVakdocent: boolean = false;
+	export let isAdmin: boolean = false;
+	export let lessonOptions: { value: string; label: string }[] = [];
 	
 	// Debug logging
 	console.log('WorkshopView: received event:', event);
 	console.log('WorkshopView: event.sessions:', event.sessions);
-	console.log('WorkshopView: event.workshopType:', event.workshopType);
+	
+	
+	// Function to get lesson name from lesson ID
+	function getLessonName(lessonId: string): string {
+		const lesson = lessonOptions.find(opt => opt.value === lessonId);
+		return lesson ? lesson.label : lessonId;
+	}
+
+	// Function to get status label with proper styling
+	function getStatusLabel(status: string): string {
+		const statusMap = {
+			'concept': 'Concept',
+			'geplanned': 'Gepland',
+			'gekoppeld': 'Gekoppeld',
+			'bevestigd': 'Bevestigd',
+			'in_uitvoering': 'In uitvoering',
+			'afgerond': 'Afgerond',
+			'gecanceld': 'Geannuleerd'
+		};
+		return statusMap[status] || status;
+	}
+
+	// Function to get status color
+	function getStatusColor(status: string): string {
+		const colorMap = {
+			'concept': '#6b7280', // gray
+			'geplanned': '#3b82f6', // blue
+			'gekoppeld': '#f59e0b', // amber
+			'bevestigd': '#10b981', // green
+			'in_uitvoering': '#8b5cf6', // purple
+			'afgerond': '#059669', // emerald
+			'gecanceld': '#ef4444' // red
+		};
+		return colorMap[status] || '#6b7280';
+	}
+
+	// Function to get status explanation
+	function getStatusExplanation(status: string): string {
+		const explanations = {
+			'concept': 'Deze workshop is nog in concept fase en alleen zichtbaar voor administrators.',
+			'geplanned': 'Deze workshop is gepland en kan geboekt worden door vakdocenten.',
+			'gekoppeld': 'Er is een voorstel gedaan aan een vakdocent voor deze workshop.',
+			'bevestigd': 'Deze workshop is bevestigd door een vakdocent.',
+			'in_uitvoering': 'Deze workshop is momenteel bezig.',
+			'afgerond': 'Deze workshop is succesvol afgerond.',
+			'gecanceld': 'Deze workshop is geannuleerd.'
+		};
+		return explanations[status] || 'Onbekende status';
+	}
+
 	import { createEventDispatcher } from 'svelte';
 	import { Map, MapPin, Clipboard, Pencil, Check } from '@lucide/svelte';
 	import { goto } from '$app/navigation';
+	import * as Popover from "$lib/components/ui/popover/index.js";
 	const dispatch = createEventDispatcher();
 	let copied = false;
 
@@ -30,8 +82,8 @@
 		goto(`/connect?workshop=${event.$id}`);
 	}
 
-	// Check if workshop is available (no teacher assigned or status is pending)
-	$: isAvailable = !event.teacher || event.status === 'pending';
+	// Check if workshop is available (no teacher assigned or status is geplanned)
+	$: isAvailable = !event.teacher || event.status === 'geplanned';
 	
 	// Check if workshop is assigned to current user
 	$: isAssignedToMe = currentUser && event.teacher === currentUser.$id;
@@ -116,39 +168,45 @@
 		</div>
 	{/if}
 	<div class="details-title-row">
-		<h2>Workshop details</h2>
-		<button
-			class="icon-btn edit-icon-btn"
-			on:click={edit}
-			aria-label="Bewerk"
-			title="Bewerk deze workshop"><Pencil size={20} /></button
-		>
+		<h2>
+			{event.title || 'Workshop details'}
+		</h2>
+		{#if isAdmin}
+			<button
+				class="icon-btn edit-icon-btn"
+				on:click={edit}
+				aria-label="Bewerk"
+				title="Bewerk deze workshop"><Pencil size={20} /></button
+			>
+		{/if}
 	</div>
 	{#if event}
-		<div class="workshop-info-grid">
-			<div>
-				<span>Les:</span>
-				{#if event.lessonId}<a href={`/lessen/${event.lessonId}`} target="_blank"
-						>{event.lessonName}</a
-					>{:else}-{/if}
-			</div>
-			<div>
-				<span>School:</span>
-				{#if event.schoolId}<a href={`/scholen/${event.schoolId}`} target="_blank"
-						>{event.schoolName}</a
-					>{:else}-{/if}
-			</div>
-			<div><span>Groep:</span> {event.group}</div>
-			<div>
-				<span>Vakdocent:</span>
-				{#if event.teacherId}<a href={`/team/${event.teacherId}`} target="_blank"
-						>{event.teacherName}</a
-					>{:else}-{/if}
-			</div>
-			<div><span>Datum:</span> {formatDate(event.start)}</div>
-			{#if event.sessions && event.sessions.length > 0}
-				<div style="grid-column: 1 / -1;">
-					<span>Sessies:</span>
+		{#if event.status !== 'concept' || isAdmin}
+			<Popover.Root>
+				<Popover.Trigger 
+					class="workshop-status-button" 
+					style="color: var(--foreground, #222)"
+					aria-label="Status uitleg"
+				>
+					{getStatusLabel(event.status)}
+				</Popover.Trigger>
+				<Popover.Content class="status-popover-content" align="start">
+					<div class="status-popover-header">
+						<strong>{getStatusLabel(event.status)}</strong>
+					</div>
+					<div class="status-popover-body">
+						{getStatusExplanation(event.status)}
+					</div>
+				</Popover.Content>
+			</Popover.Root>
+		{/if}
+		<div class="workshop-content">
+			<!-- Timeline Section (Left Column) -->
+			<div class="workshop-timeline-section">
+				{#if event.sessions && event.sessions.length > 0}
+					<div class="timeline-header">
+						<span class="timeline-title">Workshops:</span>
+					</div>
 					{#each event.sessions as session, index}
 						<div class="session-timeline-item {session.type}">
 							<div class="session-timeline-header">
@@ -165,48 +223,101 @@
 									{session.duration} minuten
 								</div>
 							{/if}
+							{#if session.type === 'session' && session.title !== 'Voorbereiding op locatie'}
+								<div class="session-details">
+									{#if session.lesson}
+										<div class="session-detail-item">
+											<span class="session-detail-label">Workshop:</span>
+											<span class="session-detail-value">{getLessonName(session.lesson)}</span>
+										</div>
+									{/if}
+									{#if session.group}
+										<div class="session-detail-item">
+											<span class="session-detail-label">Groep/lokaal:</span>
+											<span class="session-detail-value">{session.group}</span>
+										</div>
+									{/if}
+								</div>
+							{/if}
 						</div>
 					{/each}
+				{/if}
+			</div>
+
+			<!-- Details Section (Right Column) -->
+			<div class="workshop-details-section">
+				<div class="workshop-info-grid">
+					{#if (event.eventType === 'event' || (!event.eventType && !event.school))}
+						<div>
+							<span>Event:</span>
+							{event.title || '-'}
+						</div>
+					{:else}
+						<div>
+							<span>School:</span>
+							{#if event.schoolId}<a href={`/scholen/${event.schoolId}`} target="_blank"
+									>{event.schoolName}</a
+								>{:else}-{/if}
+						</div>
+					{/if}
+					{#if isAdmin}
+						<div>
+							<span>Vakdocent:</span>
+							{#if event.teacherId}<a href={`/team/${event.teacherId}`} target="_blank"
+									>{event.teacherName}</a
+								>{:else}-{/if}
+						</div>
+					{/if}
+					<div><span>Datum:</span> {formatDate(event.start)}</div>
+					<div><span>Tijd:</span> {formatTimeRange(event.start, event.end)}</div>
+					<div><span>Totale workshoptijd:</span> {(() => {
+						const totalMinutes = event.totalDuration || event.length;
+						const hours = Math.floor(totalMinutes / 60);
+						const minutes = totalMinutes % 60;
+						
+						if (hours === 0) {
+							return `${minutes} minuten`;
+						} else if (minutes === 0) {
+							return `${hours} ${hours === 1 ? 'uur' : 'uur'}`;
+						} else {
+							return `${hours} ${hours === 1 ? 'uur' : 'uur'} en ${minutes} ${minutes === 1 ? 'minuut' : 'minuten'}`;
+						}
+					})()}</div>
+					<div><span>Materialen:</span> {event.materialen}</div>
+					<div><span>Beschrijving:</span> {event.description}</div>
+					{#if address}
+						<div class="address-row">
+							<span>Adres:</span>
+							{address}
+							<span class="address-actions">
+								<a
+									href={`https://www.openstreetmap.org/search?query=${mapsQuery}`}
+									target="_blank"
+									title="Bekijk op OpenStreetMap"
+									class="address-icon"><Map color="var(--accent)" size={20} /></a
+								>
+								<a
+									href={`https://www.google.com/maps/search/?api=1&query=${mapsQuery}`}
+									target="_blank"
+									title="Bekijk op Google Maps"
+									class="address-icon"><MapPin color="var(--warning)" size={20} /></a
+								>
+								<a
+									href="#"
+									class="address-icon clipboard-btn"
+									title={copied ? 'Gekopieerd!' : 'Kopieer adres'}
+									aria-label="Kopieer adres"
+									on:click|preventDefault={copyAddress}
+									><Clipboard color="var(--foreground)" size={20} /></a
+								>
+							</span>
+						</div>
+					{/if}
+					{#if phone}
+						<div><span>Telefoon:</span> <a href={`tel:${phone}`}>{phone}</a></div>
+					{/if}
 				</div>
-				<div><span>Totale sessietijd:</span> {event.totalDuration || event.length} min</div>
-			{:else}
-				<div><span>Tijd:</span> {formatTimeRange(event.start, event.end)}</div>
-				<div><span>Totale sessietijd:</span> {event.length} min</div>
-			{/if}
-			<div><span>Status:</span> {event.status}</div>
-			<div><span>Materialen:</span> {event.materialen}</div>
-			<div><span>Beschrijving:</span> {event.description}</div>
-			{#if address}
-				<div class="address-row" style="grid-column: 1 / -1;">
-					<span>Adres:</span>
-					{address}
-					<span class="address-actions">
-						<a
-							href={`https://www.openstreetmap.org/search?query=${mapsQuery}`}
-							target="_blank"
-							title="Bekijk op OpenStreetMap"
-							class="address-icon"><Map color="var(--accent)" size={20} /></a
-						>
-						<a
-							href={`https://www.google.com/maps/search/?api=1&query=${mapsQuery}`}
-							target="_blank"
-							title="Bekijk op Google Maps"
-							class="address-icon"><MapPin color="var(--warning)" size={20} /></a
-						>
-						<a
-							href="#"
-							class="address-icon clipboard-btn"
-							title={copied ? 'Gekopieerd!' : 'Kopieer adres'}
-							aria-label="Kopieer adres"
-							on:click|preventDefault={copyAddress}
-							><Clipboard color="var(--foreground)" size={20} /></a
-						>
-					</span>
-				</div>
-			{/if}
-			{#if phone}
-				<div><span>Telefoon:</span> <a href={`tel:${phone}`}>{phone}</a></div>
-			{/if}
+			</div>
 		</div>
 	{:else}
 		<div>Geen gegevens beschikbaar.</div>
@@ -235,8 +346,7 @@
 
 <style>
 	.workshop-view-card {
-		max-width: 500px;
-		margin: 0 auto;
+		width: 100%;
 		background: var(--background, #fff);
 		color: var(--foreground, #222);
 		border-radius: 12px;
@@ -258,15 +368,55 @@
 		color: var(--warning, #eab308);
 	}
 	.workshop-view-card h2 {
-		margin-bottom: 1.5rem;
+		margin: 0;
 		font-size: 1.4rem;
 		font-weight: bold;
 		color: var(--accent, #3ba39b);
 	}
+	
+	:global(.workshop-status-button) {
+		background: none;
+		border: none;
+		font-size: 0.9rem;
+		font-weight: 500;
+		line-height: 1.2;
+		cursor: pointer;
+		padding: 0.25rem 0.5rem;
+		border-radius: 4px;
+		transition: background-color 0.2s ease;
+		margin: -0.2rem 0 1.5rem 0;
+		display: inline-block;
+	}
+
+	:global(.workshop-status-button:hover) {
+		background-color: var(--divider, #eaeaea);
+	}
+
+	:global(.status-popover-content) {
+		min-width: 250px;
+		max-width: 300px;
+		padding: 1rem;
+		font-size: 0.9rem;
+		line-height: 1.4;
+		background: var(--background, #fff) !important;
+		border: 1px solid var(--divider, #eaeaea) !important;
+		border-radius: 8px !important;
+		box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1) !important;
+		color: var(--foreground, #222) !important;
+	}
+
+	.status-popover-header {
+		margin-bottom: 0.5rem;
+		font-size: 1rem;
+	}
+
+	.status-popover-body {
+		color: var(--muted-foreground, #6c757d);
+	}
 	.workshop-info-grid {
-		display: grid;
-		grid-template-columns: 1fr 1fr;
-		gap: 1rem 2rem;
+		display: flex;
+		flex-direction: column;
+		gap: 1rem;
 		font-size: 1.05rem;
 	}
 	.workshop-info-grid span {
@@ -274,10 +424,52 @@
 		color: var(--foreground, #222);
 		margin-right: 0.5rem;
 	}
-	@media (max-width: 600px) {
-		.workshop-info-grid {
-			grid-template-columns: 1fr;
+
+	/* Two-column layout for workshop content */
+	.workshop-content {
+		display: flex;
+		flex-direction: column;
+		gap: 2rem;
+	}
+
+	.workshop-timeline-section {
+		flex: 1;
+	}
+
+	.workshop-details-section {
+		flex: 1;
+	}
+
+	.timeline-header {
+		margin-bottom: 1rem;
+	}
+
+	.timeline-title {
+		font-weight: 600;
+		color: var(--foreground, #222);
+		font-size: 1.05rem;
+	}
+
+	/* Responsive layout for tablet and desktop */
+	@media (min-width: 768px) {
+		.workshop-content {
+			flex-direction: row;
+			gap: 2.5rem;
 		}
+		
+		.workshop-timeline-section {
+			flex: 0 0 45%;
+		}
+		
+		.workshop-details-section {
+			flex: 1;
+		}
+		
+		.workshop-info-grid {
+			gap: 1rem;
+		}
+	}
+	@media (max-width: 600px) {
 		.workshop-view-card {
 			padding: 1.2rem 0.5rem 1.5rem 0.5rem;
 		}
@@ -457,5 +649,30 @@
 		font-size: 0.75rem;
 		color: var(--muted-foreground, #6c757d);
 		margin-left: 1.6rem;
+	}
+
+	.session-details {
+		margin-top: 0.5rem;
+		margin-left: 1.6rem;
+		display: flex;
+		flex-direction: column;
+		gap: 0.25rem;
+	}
+
+	.session-detail-item {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		font-size: 0.8rem;
+	}
+
+	.session-detail-label {
+		font-weight: 600;
+		color: var(--muted-foreground, #6c757d);
+		min-width: 80px;
+	}
+
+	.session-detail-value {
+		color: var(--foreground, #222);
 	}
 </style>

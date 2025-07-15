@@ -23,9 +23,10 @@
 		status?: string;
 		description?: string;
 		start?: string;
-		workshopType?: 'single' | 'multi-session';
 		sessions?: Session[];
 		totalDuration?: number;
+		eventType?: 'schooldag' | 'event';
+		title?: string;
 	}
 </script>
 
@@ -34,6 +35,7 @@
 	import SvelteSelect from 'svelte-select';
 	import { DatePicker } from '$lib/components/ui/date-picker/index.js';
 	import { TimePicker } from '$lib/components/ui/time-picker/index.js';
+	import Switch from "$lib/components/ui/switch/switch.svelte";
 
 	export let lessonOptions: Option[] = [];
 	export let schoolOptions: Option[] = [];
@@ -44,34 +46,38 @@
 	export let initialValues: WorkshopFormValues = {};
 
 	// Form fields
-	export let selectedLesson: Option | null = null;
 	export let selectedSchool: Option | null = null;
-	export let selectedGroup: string = '';
 	export let selectedTeacher: Option | null = null;
 	export let lessonLength: number = 45;
 	export let materialen: string = '';
-	export let status: string = 'pending';
+	export let status: string = 'concept';
 	export let description: string = '';
 	export let editEventStart: Date | null = null;
 	export let startTime: { hour: number; minute: number } | undefined = undefined;
-	export let workshopType: 'single' | 'multi-session' = 'multi-session';
 	export let sessions: Session[] = [];
+	export let eventType: 'schooldag' | 'event' = 'schooldag';
+	export let title: string = '';
+	
+	let switchChecked = false;
 
 	const dispatch = createEventDispatcher();
 
 	$: if (initialValues && Object.keys(initialValues).length > 0) {
-		selectedLesson = lessonOptions.find((opt) => opt.value === initialValues.lesson) || null;
 		selectedSchool = schoolOptions.find((opt) => opt.value === initialValues.school) || null;
-		selectedGroup = initialValues.group ?? '';
 		selectedTeacher = teacherOptions.find((opt) => opt.value === initialValues.teacher) || null;
 		lessonLength = initialValues.length ?? 45;
 		materialen = initialValues.materialen ?? '';
-		status = initialValues.status ?? 'pending';
+		status = initialValues.status ?? 'concept';
 		description = initialValues.description ?? '';
 		editEventStart = initialValues.start ? new Date(initialValues.start) : null;
-		workshopType = initialValues.workshopType ?? 'multi-session';
 		sessions = initialValues.sessions ?? [];
+		eventType = initialValues.eventType ?? 'schooldag';
+		title = initialValues.title ?? '';
+		switchChecked = (initialValues.eventType ?? 'schooldag') === 'event';
 	}
+
+	// Update eventType when switch changes
+	$: eventType = switchChecked ? 'event' : 'schooldag';
 
 	$: endTime = (() => {
 		if (sessions.length === 0) return '';
@@ -91,29 +97,28 @@
 			startTime = { hour: 8, minute: 30 };
 		}
 		
-		const workshopStartDate = new Date(editEventStart);
-		// Use time from time picker if available, otherwise default to 8:30 AM
-		if (startTime) {
-			workshopStartDate.setHours(startTime.hour, startTime.minute, 0, 0);
-		} else {
-			workshopStartDate.setHours(8, 30, 0, 0); // Default to 8:30 AM
-		}
+		// Create date in local timezone, not UTC
+		const year = editEventStart.getFullYear();
+		const month = editEventStart.getMonth();
+		const day = editEventStart.getDate();
+		
+		const workshopStartDate = new Date(year, month, day, startTime.hour, startTime.minute, 0, 0);
 		
 		const prepStartDate = new Date(workshopStartDate.getTime() - 30 * 60000); // 30 min before
 		const sessionEndDate = new Date(workshopStartDate.getTime() + 90 * 60000);
 		
 		sessions = [
 			{
-				start: prepStartDate.toISOString(),
-				end: workshopStartDate.toISOString(),
+				start: toLocalISOString(prepStartDate),
+				end: toLocalISOString(workshopStartDate),
 				type: 'session',
 				title: 'Voorbereiding op locatie',
 				duration: 30
 				// No lesson or group for preparation
 			},
 			{
-				start: workshopStartDate.toISOString(),
-				end: sessionEndDate.toISOString(),
+				start: toLocalISOString(workshopStartDate),
+				end: toLocalISOString(sessionEndDate),
 				type: 'session',
 				title: 'Sessie 1',
 				duration: 90
@@ -141,14 +146,14 @@
 		
 		// Add a 15-minute break after the last session
 		const breakStart = startTime;
-		const breakEnd = new Date(new Date(breakStart).getTime() + 15 * 60000).toISOString();
+		const breakEnd = toLocalISOString(new Date(new Date(breakStart).getTime() + 15 * 60000));
 		
 		// Get duration from last session, default to 90 if none exists
 		const sessionDuration = lastActualSession?.duration || 90;
 		
 		// Add new session after the break
 		const sessionStart = breakEnd;
-		const sessionEnd = new Date(new Date(sessionStart).getTime() + sessionDuration * 60000).toISOString();
+		const sessionEnd = toLocalISOString(new Date(new Date(sessionStart).getTime() + sessionDuration * 60000));
 		
 		// Count actual sessions (not preparation)
 		const actualSessionCount = sessions.filter(s => s.type === 'session' && s.title !== 'Voorbereiding op locatie').length;
@@ -204,18 +209,21 @@
 		
 		isUpdating = true;
 		
-		// Create the actual workshop start time from date + time picker
-		const workshopStartTime = new Date(editEventStart);
-		workshopStartTime.setHours(startTime.hour, startTime.minute, 0, 0);
+		// Create the actual workshop start time from date + time picker in local timezone
+		const year = editEventStart.getFullYear();
+		const month = editEventStart.getMonth();
+		const day = editEventStart.getDate();
+		const workshopStartTime = new Date(year, month, day, startTime.hour, startTime.minute, 0, 0);
 		
 		// If first session is preparation, start 30 minutes before the workshop time
 		let currentTime = sessions[0].title === 'Voorbereiding op locatie' 
-			? new Date(workshopStartTime.getTime() - 30 * 60000).toISOString()
-			: workshopStartTime.toISOString();
+			? toLocalISOString(new Date(workshopStartTime.getTime() - 30 * 60000))
+			: toLocalISOString(workshopStartTime);
 		
 		sessions = sessions.map(session => {
 			const start = currentTime;
-			const end = new Date(new Date(start).getTime() + (session.duration || 0) * 60000).toISOString();
+			const endDate = new Date(new Date(start).getTime() + (session.duration || 0) * 60000);
+			const end = toLocalISOString(endDate);
 			currentTime = end;
 			return { ...session, start, end };
 		});
@@ -250,30 +258,46 @@
 		const minutes = totalDuration % 60;
 		
 		if (hours === 0) {
-			return `${minutes} min`;
+			return `${minutes} minuten`;
 		} else if (minutes === 0) {
-			return `${hours}:00`;
+			return `${hours} ${hours === 1 ? 'uur' : 'uur'}`;
 		} else {
-			return `${hours}:${minutes.toString().padStart(2, '0')}`;
+			return `${hours} ${hours === 1 ? 'uur' : 'uur'} en ${minutes} ${minutes === 1 ? 'minuut' : 'minuten'}`;
 		}
 	})();
 
+
+	// Helper function to create local timezone ISO string
+	function toLocalISOString(date: Date): string {
+		const year = date.getFullYear();
+		const month = String(date.getMonth() + 1).padStart(2, '0');
+		const day = String(date.getDate()).padStart(2, '0');
+		const hours = String(date.getHours()).padStart(2, '0');
+		const minutes = String(date.getMinutes()).padStart(2, '0');
+		const seconds = String(date.getSeconds()).padStart(2, '0');
+		return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}`;
+	}
+
+	// Computed start and end times from sessions
+	$: computedStart = sessions.length > 0 ? sessions[0].start : (editEventStart instanceof Date ? toLocalISOString(editEventStart) : '');
+	$: computedEnd = sessions.length > 0 ? sessions[sessions.length - 1].end : (editEventStart instanceof Date ? toLocalISOString(editEventStart) : '');
+
 	function handleSubmit(e: Event) {
 		e.preventDefault();
-		console.log('Workshop form submitting with type:', workshopType);
 		dispatch('submit', {
-			selectedLesson: selectedLesson ? selectedLesson.value : '',
 			selectedSchool: selectedSchool ? selectedSchool.value : '',
-			selectedGroup,
 			selectedTeacher: selectedTeacher ? selectedTeacher.value : '',
 			lessonLength,
 			materialen,
 			status,
 			description,
 			editEventStart: editEventStart instanceof Date ? editEventStart.toISOString() : '',
-			workshopType,
 			sessions,
-			totalDuration: totalDuration
+			totalDuration: totalDuration,
+			eventType,
+			title,
+			computedStart,
+			computedEnd
 		});
 	}
 	function handleCancel() {
@@ -283,15 +307,35 @@
 
 <form on:submit|preventDefault={handleSubmit}>
 	<h2>{isEdit ? 'Edit Event' : 'Workshop toevoegen'}</h2>
-	<label>
-		School:
-		<SvelteSelect
-			items={schoolOptions}
-			bind:value={selectedSchool}
-			placeholder="Kies een school..."
-			required
-		/>
-	</label>
+	<div class="type-switch-container">
+		<div class="type-switch-label">
+			<span class="type-label {eventType === 'schooldag' ? 'active' : ''}">Schooldag</span>
+			<Switch bind:checked={switchChecked} class="switch-custom" />
+			<span class="type-label {eventType === 'event' ? 'active' : ''}">Event</span>
+		</div>
+	</div>
+	{#if eventType === 'event'}
+		<label>
+			Titel:
+			<input 
+				type="text" 
+				bind:value={title} 
+				placeholder="Voer een titel in..." 
+				required
+			/>
+		</label>
+	{/if}
+	{#if eventType === 'schooldag'}
+		<label>
+			School:
+			<SvelteSelect
+				items={schoolOptions}
+				bind:value={selectedSchool}
+				placeholder="Kies een school..."
+				required
+			/>
+		</label>
+	{/if}
 	<label>
 		Vakdocent:
 		<SvelteSelect
@@ -319,7 +363,7 @@
 	</div>
 	
 		<div style="grid-column: 1 / -1;">
-			<h3>Sessies en pauzes</h3>
+			<h3>Workshops en pauzes</h3>
 			{#each sessions as session, index}
 				<div class="session-item {session.type}">
 					<div class="session-header">
@@ -366,12 +410,12 @@
 									/>
 								</div>
 								<div class="session-override-field">
-									<label class="session-override-label">Groep:</label>
+									<label class="session-override-label">Groep/lokaal:</label>
 									<input
 										type="text"
 										bind:value={session.group}
 										on:input={() => updateSessionGroup(index, session.group)}
-										placeholder="Groep/klas"
+										placeholder="Groep/lokaal"
 										class="session-group-input"
 									/>
 								</div>
@@ -381,12 +425,12 @@
 				</div>
 			{/each}
 			<button type="button" class="add-session-btn" on:click={addSession}>
-				+ Sessie toevoegen
+				+ Workshop toevoegen
 			</button>
 		</div>
 	
 	<div style="grid-column: 1 / -1; font-size: 1rem; color: var(--accent); margin-bottom: 0.5rem;">
-		Eindtijd: {endTime} (Totale sessietijd: {totalSessionTimeFormatted})
+		Eindtijd: {endTime} (Totale workshoptijd: {totalSessionTimeFormatted})
 	</div>
 	<label>
 		Beschrijving/opmerkingen:
@@ -637,4 +681,49 @@
 			grid-template-columns: 1fr;
 		}
 	}
+
+	/* Type switch styles */
+	.type-switch-container {
+		grid-column: 1 / -1;
+		margin-bottom: 1rem;
+	}
+
+	.type-switch-label {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 1rem;
+		font-weight: bold;
+		font-size: 1rem;
+		flex-direction: row;
+	}
+
+	.type-label {
+		transition: color 0.2s ease;
+		color: var(--muted-foreground);
+	}
+
+	.type-label.active {
+		color: var(--accent);
+		font-weight: bold;
+	}
+
+	/* Custom switch styling */
+	:global(.switch-custom[data-state="checked"]) {
+		background-color: var(--foreground) !important;
+	}
+
+	:global(.switch-custom[data-state="unchecked"]) {
+		background-color: var(--muted) !important;
+	}
+
+	/* Switch thumb (ball) styling */
+	:global(.switch-custom[data-state="checked"] [data-slot="switch-thumb"]) {
+		background-color: var(--background) !important;
+	}
+
+	:global(.switch-custom[data-state="unchecked"] [data-slot="switch-thumb"]) {
+		background-color: var(--foreground) !important;
+	}
+
 </style>

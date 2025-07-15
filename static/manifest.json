@@ -2,8 +2,10 @@
   "name": "Toekomst School",
   "short_name": "Toekomst",
   "description": "Planning en presentatie app voor Toekomst School",
+  "id": "/dashboard",
   "start_url": "/dashboard",
   "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone"],
   "background_color": "#1d1f20",
   "theme_color": "#3ba39b",
   "orientation": "portrait-primary",
@@ -12,28 +14,52 @@
   "lang": "nl",
   "icons": [
     {
-      "src": "/toekomst_logo.svg",
-     "sizes": "192x192", 
-      "type": "image/svg+xml",
+      "src": "/favicon.png",
+      "sizes": "192x192", 
+      "type": "image/png",
       "purpose": "maskable"
     },
     {
-      "src": "/favicon.png",
+      "src": "/favicon-512x512.png",
       "sizes": "512x512",
-      "type": "image/svg+xml",
+      "type": "image/png",
       "purpose": "any"
     },
     {
-     "src": "/favicon.png",
+     "src": "/favicon-192x192.png",
       "sizes": "192x192",
-      "type": "image/svg+xml",
+      "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "/favicon.png",
+      "src": "/favicon-32x32.png",
       "sizes": "32x32",
       "type": "image/png",
       "purpose": "any"
+    },
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-maskable-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
     }
   ],
   "shortcuts": [
@@ -77,5 +103,35 @@
   "prefer_related_applications": false,
   "edge_side_panel": {
     "preferred_width": 400
-  }
+ },
+  "url_handlers": [
+    {
+      "origin": "https://dev.toekomst.school"
+    },
+    {
+      "origin": "https://toekomst.school"
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "/images/screenshot_desktop-1280x720.png",
+      "sizes": "1280x720",
+      "type": "image/png",
+      "label": "Desktop screenshot"
+    },
+    {
+      "src": "/images/screenshot_desktop-1280x720.png",
+      "sizes": "1280x720",
+      "type": "image/png",
+      "label": "Desktop screenshot",
+      "form_factor": "wide"
+    },
+    {
+      "src": "/images/screenshot_mobile-375x812.png",
+      "sizes": "375x812",
+      "type": "image/png",
+      "label": "Mobile screenshot",
+      "form_factor": "narrow"
+    }
+  ]
 }

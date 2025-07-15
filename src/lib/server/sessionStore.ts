@@ -1,7 +1,9 @@
 /**
- * Unified session store for both WebSocket and HTTP APIs
+ * Unified session store for both Socket.IO and HTTP APIs
  * Provides thread-safe operations and session management
  */
+
+import type { Socket } from 'socket.io';
 
 export interface SessionData {
 	// Slide state
@@ -11,8 +13,8 @@ export interface SessionData {
 	
 	// Connection state
 	connectedDevices: number;
-	presenter: WebSocket | null;
-	controllers: Set<WebSocket>;
+	presenter: Socket | null;
+	controllers: Set<Socket>;
 	
 	// Workshop data
 	workshopStartTime?: string;
@@ -144,14 +146,14 @@ class SessionStore {
 	}
 
 	/**
-	 * Register a WebSocket as presenter
+	 * Register a Socket.IO socket as presenter
 	 */
-	registerPresenter(sessionCode: string, socket: WebSocket): void {
+	registerPresenter(sessionCode: string, socket: Socket): void {
 		const session = this.getSession(sessionCode);
 		
-		// Close existing presenter if any
-		if (session.presenter && session.presenter.readyState === WebSocket.OPEN) {
-			session.presenter.close();
+		// Disconnect existing presenter if any
+		if (session.presenter && session.presenter.connected) {
+			session.presenter.disconnect();
 		}
 		
 		session.presenter = socket;
@@ -159,9 +161,9 @@ class SessionStore {
 	}
 
 	/**
-	 * Register a WebSocket as controller
+	 * Register a Socket.IO socket as controller
 	 */
-	registerController(sessionCode: string, socket: WebSocket): void {
+	registerController(sessionCode: string, socket: Socket): void {
 		const session = this.getSession(sessionCode);
 		session.controllers.add(socket);
 		session.connectedDevices = session.controllers.size;
@@ -169,9 +171,9 @@ class SessionStore {
 	}
 
 	/**
-	 * Remove a WebSocket connection
+	 * Remove a Socket.IO connection
 	 */
-	removeConnection(sessionCode: string, socket: WebSocket): void {
+	removeConnection(sessionCode: string, socket: Socket): void {
 		const session = this.sessions.get(sessionCode);
 		if (!session) return;
 
@@ -211,24 +213,23 @@ class SessionStore {
 	}
 
 	/**
-	 * Broadcast message to all controllers via WebSocket
+	 * Broadcast message to all controllers via Socket.IO
 	 */
-	broadcastToControllers(sessionCode: string, message: any): void {
+	broadcastToControllers(sessionCode: string, eventName: string, data: any): void {
 		const session = this.sessions.get(sessionCode);
 		if (!session) return;
 
-		const messageStr = JSON.stringify(message);
 		session.controllers.forEach((controller) => {
-			if (controller.readyState === WebSocket.OPEN) {
+			if (controller.connected) {
 				try {
-					controller.send(messageStr);
+					controller.emit(eventName, data);
 				} catch (error) {
 					console.error('Error sending message to controller:', error);
 					// Remove broken connection
 					session.controllers.delete(controller);
 				}
 			} else {
-				// Remove closed connections
+				// Remove disconnected connections
 				session.controllers.delete(controller);
 			}
 		});
@@ -238,15 +239,15 @@ class SessionStore {
 	}
 
 	/**
-	 * Send message to presenter via WebSocket
+	 * Send message to presenter via Socket.IO
 	 */
-	sendToPresenter(sessionCode: string, message: any): boolean {
+	sendToPresenter(sessionCode: string, eventName: string, data: any): boolean {
 		const session = this.sessions.get(sessionCode);
 		if (!session || !session.presenter) return false;
 
-		if (session.presenter.readyState === WebSocket.OPEN) {
+		if (session.presenter.connected) {
 			try {
-				session.presenter.send(JSON.stringify(message));
+				session.presenter.emit(eventName, data);
 				return true;
 			} catch (error) {
 				console.error('Error sending message to presenter:', error);
@@ -272,13 +273,13 @@ class SessionStore {
 	deleteSession(sessionCode: string): void {
 		const session = this.sessions.get(sessionCode);
 		if (session) {
-			// Close all WebSocket connections
-			if (session.presenter && session.presenter.readyState === WebSocket.OPEN) {
-				session.presenter.close();
+			// Disconnect all Socket.IO connections
+			if (session.presenter && session.presenter.connected) {
+				session.presenter.disconnect();
 			}
 			session.controllers.forEach(controller => {
-				if (controller.readyState === WebSocket.OPEN) {
-					controller.close();
+				if (controller.connected) {
+					controller.disconnect();
 				}
 			});
 		}

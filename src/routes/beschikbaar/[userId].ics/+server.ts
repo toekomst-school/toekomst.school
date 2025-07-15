@@ -1,10 +1,10 @@
 import type { RequestHandler } from '@sveltejs/kit';
-import { Client, Databases } from 'node-appwrite';
+import { Client, Databases, Query } from 'node-appwrite';
 import ical from 'ical-generator';
 import dotenv from 'dotenv';
 dotenv.config();
 
-// Define a type for planning events
+// Define types
 interface PlanningEvent {
 	$id: string;
 	start: string;
@@ -53,7 +53,7 @@ async function generateSessionSummary(sessions: Session[], databases: Databases)
 					const lessonDoc = await databases.getDocument('lessen', 'les', session.lesson);
 					lessonName = lessonDoc.onderwerp || lessonDoc.lesnummer || 'Workshop';
 				} catch (err) {
-					console.error(`[ICS] Failed to fetch lesson ${session.lesson}:`, err);
+					console.error(`Failed to fetch lesson ${session.lesson}:`, err);
 				}
 			}
 			
@@ -72,19 +72,25 @@ async function generateSessionSummary(sessions: Session[], databases: Databases)
 	return summaryLines.join('\n');
 }
 
-export const GET: RequestHandler = async () => {
+export const GET: RequestHandler = async ({ params }) => {
+	const { userId } = params;
+	
+	if (!userId) {
+		return new Response('User ID is required', { status: 400 });
+	}
+
 	if (
 		!process.env.APPWRITE_ENDPOINT ||
 		!process.env.APPWRITE_PROJECT ||
 		!process.env.APPWRITE_API_KEY
 	) {
-		console.error('[ICS] Missing Appwrite environment variables');
+		console.error('[BESCHIKBAAR ICS] Missing Appwrite environment variables');
 		return new Response('Server misconfigured: missing Appwrite environment variables', {
 			status: 500
 		});
 	}
 
-	console.log('[ICS] Connecting to Appwrite...');
+	console.log(`[BESCHIKBAAR ICS] Generating calendar for user: ${userId}`);
 	const client = new Client();
 	client
 		.setEndpoint(process.env.APPWRITE_ENDPOINT!)
@@ -97,9 +103,19 @@ export const GET: RequestHandler = async () => {
 
 	let events: PlanningEvent[] = [];
 	try {
-		console.log('[ICS] Fetching documents from Appwrite...');
-		const res = await databases.listDocuments(databaseId, collectionId);
-		console.log(`[ICS] Fetched ${res.documents.length} documents.`);
+		console.log('[BESCHIKBAAR ICS] Fetching available events...');
+		const queries = [
+			Query.or([
+				Query.equal('teacher', ''),
+				Query.isNull('teacher'),
+				Query.equal('status', 'geplanned')
+			]),
+			Query.notEqual('status', 'concept') // Always filter concept for personal feeds
+		];
+
+		const res = await databases.listDocuments(databaseId, collectionId, queries);
+		console.log(`[BESCHIKBAAR ICS] Fetched ${res.documents.length} available events.`);
+		
 		events = res.documents.map((doc: Record<string, unknown>) => ({
 			$id: doc.$id as string,
 			start: doc.start as string,
@@ -111,16 +127,15 @@ export const GET: RequestHandler = async () => {
 			sessions: doc.sessions as string | undefined,
 			title: doc.title as string | undefined
 		}));
-		console.log('[ICS] Events mapped:', events);
 	} catch (err) {
-		console.error('[ICS] Failed to fetch events:', err);
+		console.error('[BESCHIKBAAR ICS] Failed to fetch events:', err);
 		return new Response('Failed to fetch events', { status: 500 });
 	}
 
 	const cal = ical({
-		name: 'Toekomst.school Planning',
+		name: 'Beschikbare Workshops - Toekomst.school',
 		timezone: 'Europe/Amsterdam',
-		prodId: '//toekomst.school//planning//NL'
+		prodId: '//toekomst.school//beschikbaar//NL'
 	});
 
 	for (const event of events) {
@@ -133,9 +148,10 @@ export const GET: RequestHandler = async () => {
 				schoolName = schoolDoc.NAAM || schoolDoc.$id;
 				schoolAddress = schoolDoc.ADRES || '';
 			} catch (err) {
-				console.error(`[ICS] Failed to fetch school for event ${event.$id}:`, err);
+				console.error(`[BESCHIKBAAR ICS] Failed to fetch school for event ${event.$id}:`, err);
 			}
 		}
+
 		// Fetch lesson info for this event
 		let lessonName = '-';
 		if (event.lesson) {
@@ -143,9 +159,10 @@ export const GET: RequestHandler = async () => {
 				const lessonDoc = await databases.getDocument('lessen', 'les', event.lesson);
 				lessonName = lessonDoc.onderwerp || lessonDoc.lesnummer || lessonDoc.$id;
 			} catch (err) {
-				console.error(`[ICS] Failed to fetch lesson for event ${event.$id}:`, err);
+				console.error(`[BESCHIKBAAR ICS] Failed to fetch lesson for event ${event.$id}:`, err);
 			}
 		}
+
 		// Parse sessions and generate summary
 		let sessionSummary = '';
 		if (event.sessions) {
@@ -153,7 +170,7 @@ export const GET: RequestHandler = async () => {
 				const parsedSessions: Session[] = JSON.parse(event.sessions);
 				sessionSummary = await generateSessionSummary(parsedSessions, databases);
 			} catch (err) {
-				console.error(`[ICS] Failed to parse sessions for event ${event.$id}:`, err);
+				console.error(`[BESCHIKBAAR ICS] Failed to parse sessions for event ${event.$id}:`, err);
 			}
 		}
 
@@ -161,8 +178,10 @@ export const GET: RequestHandler = async () => {
 		const summary = event.title || schoolName || 'Workshop';
 		const eventUrl = `https://toekomst.school/planning?id=${event.$id}`;
 		const description = `${eventUrl}${sessionSummary}\n\n${event.description || ''}`;
+		
 		const start = event.start ? new Date(event.start) : new Date();
 		const end = event.end ? new Date(event.end) : new Date(Date.now() + 60 * 60 * 1000);
+		
 		cal.createEvent({
 			id: event.$id,
 			start,
@@ -175,11 +194,11 @@ export const GET: RequestHandler = async () => {
 		});
 	}
 
-	console.log('[ICS] Calendar generated. Returning response.');
+	console.log(`[BESCHIKBAAR ICS] Calendar generated with ${events.length} events.`);
 	return new Response(cal.toString(), {
 		headers: {
 			'Content-Type': 'text/calendar; charset=utf-8',
-			'Content-Disposition': 'inline; filename="planning.ics"'
+			'Content-Disposition': `inline; filename="beschikbaar-${userId}.ics"`
 		}
 	});
 };

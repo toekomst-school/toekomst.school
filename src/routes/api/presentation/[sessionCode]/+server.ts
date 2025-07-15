@@ -49,12 +49,7 @@ export const POST: RequestHandler = async ({ params, request }) => {
 			
 		case 'slide-change':
 			sessionStore.updateSlideState(sessionCode, data.current, data.total);
-			// Also broadcast to WebSocket controllers
-			sessionStore.broadcastToControllers(sessionCode, {
-				type: 'slide-update',
-				current: data.current,
-				total: data.total
-			});
+			// Socket.IO will handle broadcasting via the server
 			break;
 			
 		case 'connect-device':
@@ -90,20 +85,7 @@ export const POST: RequestHandler = async ({ params, request }) => {
 					end: data.workshopEndTime
 				});
 				
-				// Broadcast lesson/workshop update to WebSocket connections
-				sessionStore.broadcastToControllers(sessionCode, {
-					type: 'lesson-update',
-					slides: data.slides,
-					totalSlides: data.totalSlides,
-					workshopData: data.workshopData
-				});
-				
-				sessionStore.sendToPresenter(sessionCode, {
-					type: 'lesson-update',
-					slides: data.slides,
-					totalSlides: data.totalSlides,
-					workshopData: data.workshopData
-				});
+				// Socket.IO will handle broadcasting via the server automatically
 			} else {
 				console.log('❌ API SERVER - No workshop data in request:', {
 					sessionCode,
@@ -129,18 +111,11 @@ export const POST: RequestHandler = async ({ params, request }) => {
 			// Add command to session store
 			const commandId = sessionStore.addCommand(sessionCode, data.command);
 			
-			// Also try to send directly to WebSocket presenter if available
-			const sent = sessionStore.sendToPresenter(sessionCode, {
-				type: 'remote-command',
-				command: data.command,
-				commandId
-			});
-			
+			// Socket.IO will handle command forwarding via the server automatically
 			console.log('🎮 Command processed:', {
 				sessionCode,
 				command: data.command,
-				commandId,
-				sentViaWebSocket: sent
+				commandId
 			});
 			break;
 	}

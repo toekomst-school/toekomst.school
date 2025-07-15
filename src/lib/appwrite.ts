@@ -1,4 +1,4 @@
-import { Client, Account, Databases } from 'appwrite';
+import { Client, Account, Databases, Teams } from 'appwrite';
 
 export const appwrite = new Client()
 	.setEndpoint('https://write.toekomst.school/v1') // Your Appwrite endpoint
@@ -6,3 +6,4 @@ export const appwrite = new Client()
 
 export const account = new Account(appwrite);
 export const databases = new Databases(appwrite);
+export const teams = new Teams(appwrite);

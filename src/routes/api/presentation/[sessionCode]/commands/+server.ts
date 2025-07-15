@@ -21,19 +21,12 @@ export const POST: RequestHandler = async ({ params, request }) => {
 	// Add command to shared store
 	const commandId = sessionStore.addCommand(sessionCode, command);
 	
-	// Try to send directly via WebSocket if presenter is connected
-	const sent = sessionStore.sendToPresenter(sessionCode, {
-		type: 'remote-command',
-		command: command,
-		commandId
-	});
-	
+	// Socket.IO will handle command forwarding via the server automatically
 	console.log('🎮 Command API - Command processed:', {
 		sessionCode,
 		command,
-		commandId,
-		sentViaWebSocket: sent
+		commandId
 	});
 	
-	return json({ success: true, commandId, sentViaWebSocket: sent });
+	return json({ success: true, commandId });
 };

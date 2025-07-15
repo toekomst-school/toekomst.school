@@ -66,6 +66,8 @@
 		"node-appwrite": "^17.0.0",
 		"papaparse": "^5.5.3",
 		"pnpm": "^10.12.3",
+		"socket.io": "^4.8.1",
+		"socket.io-client": "^4.8.1",
 		"svelte-qrcode": "^1.0.1",
 		"svelte-range-slider-pips": "^4.0.5",
 		"svelte-select": "^5.8.3"

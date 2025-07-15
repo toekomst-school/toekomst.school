@@ -23,6 +23,14 @@
 	import { writable } from 'svelte/store';
 	import { goto } from '$app/navigation';
 	import { user } from '$lib/stores/auth.js';
+	import {
+		Sheet,
+		SheetContent,
+		SheetHeader,
+		SheetTitle,
+		SheetDescription
+	} from '$lib/components/ui/sheet/index.js';
+	import * as Dialog from "$lib/components/ui/dialog/index.js";
 
 	let { ref = $bindable(null), ...restProps }: ComponentProps<typeof Sidebar.Root> = $props();
 	
@@ -79,6 +87,10 @@
 		// Add click outside listener to close menus
 		function handleClickOutside(event: Event) {
 			const target = event.target as Element;
+			// Don't close menus if clicking on dialog elements
+			if (target && (target.closest('[data-slot="dialog-trigger"]') || target.closest('[data-slot="dialog-content"]'))) {
+				return;
+			}
 			if (showUserMenu && target && !target.closest('.user-menu-container')) {
 				console.log('Clicking outside, closing user menu');
 				showUserMenu = false;
@@ -109,6 +121,10 @@
 			installButtonText = 'Geïnstalleerd';
 			console.log('🔍 PWA Debug: State updated - isInstalled:', isInstalled, 'isInstallable:', isInstallable, 'text:', installButtonText);
 			return;
+		} else {
+			// Show install button for non-standalone users
+			isInstallable = true;
+			installButtonText = 'App installeren';
 		}
 
 		// Listen for beforeinstallprompt
@@ -222,6 +238,42 @@
 			});
 		} else {
 			console.log('🔍 PWA Debug: No deferredPrompt available');
+		}
+	}
+	
+	function getInstallInstructions() {
+		const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+		const isAndroid = /Android/.test(navigator.userAgent);
+		const isChrome = /Chrome/.test(navigator.userAgent);
+		const isSafari = /Safari/.test(navigator.userAgent) && !isChrome;
+		
+		if (isIOS && isSafari) {
+			return {
+				title: "Installeer op iOS",
+				steps: [
+					"Tik op het deel-icoon onderin Safari",
+					"Scroll naar beneden en tik op 'Voeg toe aan beginscherm'",
+					"Tik op 'Voeg toe' om te bevestigen"
+				]
+			};
+		} else if (isAndroid) {
+			return {
+				title: "Installeer op Android",
+				steps: [
+					"Tik op het menu (⋮) rechtsboven in je browser",
+					"Selecteer 'App installeren' of 'Toevoegen aan startscherm'",
+					"Tik op 'Installeren' om te bevestigen"
+				]
+			};
+		} else {
+			return {
+				title: "Installeer op Desktop",
+				steps: [
+					"Klik op het installatie-icoon in de adresbalk",
+					"Of ga naar het browsermenu en selecteer 'Toekomst School installeren'",
+					"Volg de instructies om de app te installeren"
+				]
+			};
 		}
 	}
 </script>
@@ -354,15 +406,48 @@
 							Mededelingen
 						</a>
 					{/if}
-					{#if isInstallable || isInstalled}
-						<button type="button" class="flex items-center gap-2 rounded px-3 py-2 text-sm text-foreground hover:bg-muted transition-colors w-full" on:click={handlePwaInstall} disabled={!isInstallable}>
-							<GalleryVerticalEndIcon size={16} />
-							{installButtonText}
-						</button>
-						<!-- Debug info -->
-						<div class="text-xs text-gray-500 mt-1">
-							Debug: Installable={isInstallable}, Installed={isInstalled}, HasPrompt={!!deferredPrompt}
-						</div>
+					{#if (isInstallable || isInstalled) && !isInstalled}
+						<Dialog.Root>
+							<Dialog.Trigger class="flex items-center gap-2 rounded px-3 py-2 text-sm text-foreground hover:bg-muted transition-colors w-full" on:click={(e) => { e.stopPropagation(); console.log('Dialog trigger clicked!'); }}>
+								<GalleryVerticalEndIcon size={16} />
+								{installButtonText}
+							</Dialog.Trigger>
+							<Dialog.Content class="bg-[var(--background)] text-foreground border border-border" showCloseButton={false}>
+								{@const instructions = getInstallInstructions()}
+								<Dialog.Header>
+									<Dialog.Title>{instructions.title}</Dialog.Title>
+									<Dialog.Description>
+										Volg deze stappen om Toekomst School als app te installeren:
+									</Dialog.Description>
+								</Dialog.Header>
+								<div class="my-6">
+									<ol class="space-y-3">
+										{#each instructions.steps as step, index}
+											<li class="flex gap-3">
+												<span class="flex-shrink-0 w-6 h-6 bg-blue-500 text-white rounded-full flex items-center justify-center text-sm font-medium">
+													{index + 1}
+												</span>
+												<span class="text-sm">{step}</span>
+											</li>
+										{/each}
+									</ol>
+								</div>
+								<div class="flex justify-end gap-2">
+									{#if deferredPrompt}
+										<button 
+											type="button" 
+											class="bg-blue-500 hover:bg-blue-600 text-white rounded-lg px-4 py-2 text-sm font-medium transition-colors"
+											on:click={handlePwaInstall}
+										>
+											Installeer Nu
+										</button>
+									{/if}
+									<Dialog.Close class="bg-muted hover:bg-muted/80 text-foreground rounded-lg px-4 py-2 text-sm font-medium transition-colors">
+										Sluiten
+									</Dialog.Close>
+								</div>
+							</Dialog.Content>
+						</Dialog.Root>
 					{/if}
 				</div>
 			</div>
@@ -406,5 +491,4 @@
 		</div>
 	</Sidebar.Footer>
 </Sidebar.Root>
-
 

@@ -5,6 +5,7 @@
 	import { databases } from '$lib/appwrite';
 	import Select from 'svelte-select';
 	import { user } from '$lib/stores/auth.js';
+	import { createSocketManager, type SocketManager } from '$lib/stores/socketManager.js';
 
 	let sessionCode = '';
 	let isConnected = false;
@@ -12,7 +13,6 @@
 	let currentSlide = 0;
 	let totalSlides = 0;
 	let connectionError = '';
-	let pollInterval: NodeJS.Timeout;
 	let slides = '';
 	let slideNotes: string[] = [];
 	let currentSlideNotes = '';
@@ -23,6 +23,10 @@
 	let loadingLessons = false;
 	let showLessonSelection = false;
 	let upcomingWorkshops: any[] = [];
+	
+	// Socket.IO manager
+	let socketManager: SocketManager | null = null;
+	let connectionMode: 'websocket' | 'http' = 'websocket';
 	
 	// Long press state
 	let longPressTimer: NodeJS.Timeout;
@@ -82,7 +86,9 @@
 
 
 	onDestroy(() => {
-		if (pollInterval) clearInterval(pollInterval);
+			if (socketManager) {
+			socketManager.disconnect();
+		}
 	});
 
 	function countSlidesInMarkdown(markdown: string): number {
@@ -145,14 +151,7 @@
 			
 			// Load school data if workshop has a school reference
 			if (workshopData.school) {
-				try {
-					const school = await databases.getDocument('scholen', 'school', workshopData.school);
-					workshopData.schoolName = school.name || school.NAAM || 'Onbekende school';
-					console.log('🏫 Loaded school data:', { id: workshopData.school, name: workshopData.schoolName });
-				} catch (schoolError) {
-					console.error('Error loading school data:', schoolError);
-					workshopData.schoolName = 'Onbekende school';
-				}
+				await loadSchoolData(workshopData.school);
 			}
 			
 			// Load lesson data if workshop has a lesson reference
@@ -169,6 +168,17 @@
 		} catch (error) {
 			console.error('Error loading workshop:', error);
 			connectionError = 'Kon workshop niet laden';
+		}
+	}
+
+	async function loadSchoolData(schoolId: string) {
+		try {
+			const school = await databases.getDocument('scholen', 'school', schoolId);
+			workshopData.schoolName = school.name || school.NAAM || 'Onbekende school';
+			console.log('🏫 Loaded school data:', { id: schoolId, name: workshopData.schoolName });
+		} catch (schoolError) {
+			console.error('Error loading school data:', schoolError);
+			workshopData.schoolName = 'Onbekende school';
 		}
 	}
 
@@ -271,77 +281,12 @@
 			showLessonSelection = false;
 			
 			// Send lesson data to presentation if connected
-			if (isConnected && sessionCode) {
-				await sendLessonToPresentation();
+			if (isConnected && sessionCode && socketManager) {
+				await socketManager.sendLessonUpdate(slides, totalSlides, workshopData, workshopData?.start, workshopData?.end);
 			}
 		}
 	}
 
-	async function sendLessonToPresentation() {
-		if (!slides || !sessionCode) {
-			console.log('Cannot send slides: missing slides or session code', { slides: !!slides, sessionCode });
-			return;
-		}
-		
-		try {
-			console.log('Sending lesson slides to presentation:', { sessionCode, totalSlides, slidesLength: slides.length });
-			
-			// Debug: Check current state before sending
-			console.log('🔍 CONNECT PAGE - Current state before sending:', {
-				hasWorkshopData: !!workshopData,
-				hasLessonData: !!lessonData,
-				workshopDataFields: workshopData ? Object.keys(workshopData) : 'none',
-				workshopStart: workshopData?.start,
-				workshopEnd: workshopData?.end,
-				workshopTitle: workshopData?.title
-			});
-			
-			// Prepare the data to send
-			const requestData = {
-				type: 'update-slides',
-				slides: slides,
-				totalSlides: totalSlides
-			};
-			
-			// Include full workshop details if available
-			if (workshopData) {
-				requestData.workshopData = workshopData;
-				requestData.workshopStartTime = workshopData.start;
-				requestData.workshopEndTime = workshopData.end;
-				console.log('🚀 CONNECT PAGE - Including full workshop data in request:', { 
-					workshopId: workshopData.$id,
-					title: workshopData.title,
-					start: workshopData.start, 
-					end: workshopData.end,
-					school: workshopData.school,
-					schoolName: workshopData.schoolName,
-					group: workshopData.group,
-					teacher: workshopData.teacher
-				});
-			} else {
-				console.log('❌ CONNECT PAGE - No workshop data available:', { 
-					hasWorkshopData: !!workshopData,
-					hasLessonData: !!lessonData
-				});
-			}
-			
-			console.log('📤 CONNECT PAGE - Full request data being sent:', requestData);
-			
-			const response = await fetch(`/api/presentation/${sessionCode}`, {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify(requestData)
-			});
-			
-			if (response.ok) {
-				console.log('Lesson slides successfully sent to presentation');
-			} else {
-				console.error('Failed to send slides:', response.status, response.statusText);
-			}
-		} catch (error) {
-			console.error('Error sending lesson to presentation:', error);
-		}
-	}
 
 	function clearLessonSelection() {
 		lessonData = null;
@@ -365,70 +310,112 @@
 		try {
 			console.log('Connecting to session:', sessionCode);
 			
-			// Send slides data to session when connecting (if we have lesson/workshop data)
-			const requestBody: any = { type: 'connect-device' };
-			
-			// If we have lesson/workshop data, send the slides
-			if (slides && (lessonData || workshopData)) {
-				requestBody.slides = slides;
-				requestBody.totalSlides = totalSlides;
-			}
-			
-			const response = await fetch(`/api/presentation/${sessionCode}`, {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify(requestBody)
+			// Create Socket.IO manager for this session
+			socketManager = createSocketManager({
+				sessionCode,
+				isPresenter: false,
+				onSlideUpdate: (current: number, total: number) => {
+					currentSlide = current;
+					totalSlides = total;
+					// Update current slide notes
+					currentSlideNotes = slideNotes[currentSlide] || '';
+				},
+				onLessonUpdate: (newSlides: string, totalSlidesCount: number, newWorkshopData?: any) => {
+					console.log('📚 Lesson update received on connect page:', { 
+						slidesLength: newSlides.length, 
+						totalSlidesCount, 
+						hasWorkshopData: !!newWorkshopData 
+					});
+					
+					// Update slides data
+					if (newSlides) {
+						slides = newSlides;
+						const parsed = parseMarkdownSlidesWithNotes(newSlides);
+						slideNotes = parsed.notes;
+						totalSlides = parsed.slides.length;
+						currentSlideNotes = slideNotes[currentSlide] || '';
+					}
+
+					// Update workshop data and hide lesson selection
+					if (newWorkshopData) {
+						workshopData = newWorkshopData;
+						showLessonSelection = false;
+					}
+				},
+				onSessionState: (state: any) => {
+					console.log('📊 Session state received on connect page:', state);
+					
+					// Update all session data
+					currentSlide = state.currentSlide || 0;
+					totalSlides = state.totalSlides || 0;
+					
+					// Update slides if provided
+					if (state.slides && state.slides !== slides) {
+						slides = state.slides;
+						const parsed = parseMarkdownSlidesWithNotes(state.slides);
+						slideNotes = parsed.notes;
+						totalSlides = parsed.slides.length;
+						currentSlideNotes = slideNotes[currentSlide] || '';
+						
+						// If we have slides but no workshop data, create lesson data for display
+						if (!state.workshopData && state.slides) {
+							lessonData = {
+								onderwerp: 'Actieve presentatie',
+								slides: state.slides
+							};
+						}
+					}
+
+					// Update workshop data if provided
+					if (state.workshopData) {
+						workshopData = state.workshopData;
+						showLessonSelection = false;
+						
+						// Load school data if workshop has a school reference
+						if (workshopData.school && !workshopData.schoolName) {
+							loadSchoolData(workshopData.school);
+						}
+					}
+				}
 			});
 
-			console.log('Connection response:', response.status, response.statusText);
+			// Subscribe to Socket.IO transport changes
+			socketManager.transport.subscribe(transport => {
+				connectionMode = transport === 'websocket' ? 'websocket' : 'http';
+				console.log('🔄 Transport mode updated to:', connectionMode, '(transport:', transport + ')');
+			});
 
-			if (!response.ok) {
-				const errorData = await response.text();
-				console.error('Connection failed:', errorData);
-				throw new Error('Kan niet verbinden met sessie');
+			// Connect using the Socket.IO manager
+			await socketManager.connect();
+
+			// Send slides data to session when connecting (if we have lesson/workshop data)
+			if (slides && (lessonData || workshopData)) {
+				await socketManager.connectDevice(slides, totalSlides);
+			} else {
+				await socketManager.connectDevice();
 			}
 
 			isConnected = true;
 			isConnecting = false;
 
 			// If lesson/workshop data already loaded (from URL params), send to presentation
-			if (lessonData || workshopData) {
-				await sendLessonToPresentation();
+			if ((lessonData || workshopData) && socketManager) {
+				await socketManager.sendLessonUpdate(slides, totalSlides, workshopData, workshopData?.start, workshopData?.end);
 			} else {
 				// No lesson/workshop data loaded, check for current workshop first
 				await loadAvailableLessons();
 				await checkUpcomingWorkshops();
 				
 				// If we auto-loaded a lesson from workshop, send it to presentation
-				if (lessonData) {
-					await sendLessonToPresentation();
+				if (lessonData && socketManager) {
+					await socketManager.sendLessonUpdate(slides, totalSlides, workshopData, workshopData?.start, workshopData?.end);
 				} else {
-					// No workshop lesson found, show selection dropdown
+						// No workshop lesson found, show selection dropdown
 					showLessonSelection = true;
 				}
 			}
 
-			// Start polling for slide updates
-			pollInterval = setInterval(async () => {
-				try {
-					const response = await fetch(`/api/presentation/${sessionCode}`);
-					if (response.ok) {
-						const data = await response.json();
-						currentSlide = data.currentSlide;
-						totalSlides = data.totalSlides;
-						// Update current slide notes
-						currentSlideNotes = slideNotes[currentSlide] || '';
-					} else {
-						// Session might have ended
-						if (response.status === 404) {
-							connectionError = 'Sessie is beëindigd';
-							disconnect();
-						}
-					}
-				} catch (error) {
-					console.error('Error polling session:', error);
-				}
-			}, 500); // Reduced to 500ms for more responsive updates
+			// No polling needed - Socket.IO handles real-time updates automatically
 
 		} catch (error) {
 			isConnecting = false;
@@ -437,7 +424,7 @@
 	}
 
 	async function sendCommand(command: string) {
-		if (!isConnected) return;
+		if (!isConnected || !socketManager) return;
 
 		// Debounce commands to prevent double-sends
 		const now = Date.now();
@@ -448,12 +435,8 @@
 		lastCommandTime = now;
 
 		try {
-			console.log('🎮 Sending command:', command, 'from slide:', currentSlide);
-			await fetch(`/api/presentation/${sessionCode}/commands`, {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ command })
-			});
+			console.log('🎮 Sending Socket.IO command:', command, 'from slide:', currentSlide);
+			await socketManager.sendCommand(command);
 		} catch (error) {
 			console.error('Error sending command:', error);
 		}
@@ -522,20 +505,9 @@
 	}
 
 	async function disconnect() {
-		if (pollInterval) {
-			clearInterval(pollInterval);
-		}
-
-		if (isConnected) {
-			try {
-				await fetch(`/api/presentation/${sessionCode}`, {
-					method: 'POST',
-					headers: { 'Content-Type': 'application/json' },
-					body: JSON.stringify({ type: 'disconnect-device' })
-				});
-			} catch (error) {
-				console.error('Error disconnecting:', error);
-			}
+		if (socketManager) {
+			socketManager.disconnect();
+			socketManager = null;
 		}
 
 		isConnected = false;
@@ -625,18 +597,26 @@
 			</button>
 		</div>
 	{:else}
-		<!-- Disconnect cross - absolute in top right -->
-		<div 
-			class="absolute top-4 right-4 z-50 text-destructive cursor-pointer hover:text-destructive/80 transition-colors"
-			on:click={disconnect}
-			on:keydown={(e) => e.key === 'Enter' && disconnect()}
-			role="button"
-			tabindex="0"
-			aria-label="Verbreek verbinding"
-		>
-			<svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-				<path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
-			</svg>
+		<!-- Top right controls -->
+		<div class="absolute top-4 right-4 z-50 flex items-center gap-2">
+			<!-- Connection status indicator -->
+			<div class="text-gray-400 text-sm font-mono">
+				{connectionMode === 'websocket' ? 'WS' : 'HTTP'}
+			</div>
+			
+			<!-- Disconnect cross -->
+			<div 
+				class="text-destructive cursor-pointer hover:text-destructive/80 transition-colors"
+				on:click={disconnect}
+				on:keydown={(e) => e.key === 'Enter' && disconnect()}
+				role="button"
+				tabindex="0"
+				aria-label="Verbreek verbinding"
+			>
+				<svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+					<path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+				</svg>
+			</div>
 		</div>
 		
 		<div class="space-y-6">

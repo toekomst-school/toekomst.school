@@ -38,7 +38,7 @@
 			).toISOString(),
 			end: new Date(monday.getFullYear(), monday.getMonth(), monday.getDate(), 11, 0).toISOString(),
 			color: 'var(--warning)',
-			status: 'pending',
+			status: 'geplanned',
 			teacher: ''
 		},
 		// My event (teal)
@@ -60,7 +60,7 @@
 				0
 			).toISOString(),
 			color: 'var(--accent)',
-			status: 'confirmed',
+			status: 'bevestigd',
 			teacher: '' // Will be set to currentUserId on mount
 		},
 		// Available event (orange)
@@ -82,7 +82,7 @@
 				0
 			).toISOString(),
 			color: 'var(--warning)',
-			status: 'pending',
+			status: 'geplanned',
 			teacher: ''
 		},
 		// My event (teal)
@@ -104,7 +104,7 @@
 				30
 			).toISOString(),
 			color: 'var(--accent)',
-			status: 'confirmed',
+			status: 'bevestigd',
 			teacher: '' // Will be set to currentUserId on mount
 		},
 		// Available event (orange)
@@ -126,7 +126,7 @@
 				0
 			).toISOString(),
 			color: 'var(--warning)',
-			status: 'pending',
+			status: 'geplanned',
 			teacher: ''
 		}
 	];
@@ -151,18 +151,25 @@
 
 	// Modal state for new fields
 	import type { Option } from '$lib/components/WorkshopForm.svelte';
-	let selectedLesson: Option | null = null;
 	let selectedSchool: Option | null = null;
-	let selectedGroup: string = '';
 	let selectedTeacher: Option | null = null;
 	let lessonLength: number = 45;
 	let materialen: string = '';
-	let status: string = 'pending'; // default: 'pending' (In afwachting)
-	const statusOptions = [
-		{ value: 'pending', label: 'In afwachting' },
-		{ value: 'confirmed', label: 'Bevestigd' },
-		{ value: 'declined', label: 'Geweigerd' }
+	let status: string = 'concept'; // default: 'concept' for admin, 'geplanned' for others
+	let eventType: 'schooldag' | 'event' = 'schooldag';
+	let title: string = '';
+	const allStatusOptions = [
+		{ value: 'concept', label: 'Concept' },
+		{ value: 'geplanned', label: 'Gepland' },
+		{ value: 'gekoppeld', label: 'Gekoppeld' },
+		{ value: 'bevestigd', label: 'Bevestigd' },
+		{ value: 'in_uitvoering', label: 'In uitvoering' },
+		{ value: 'afgerond', label: 'Afgerond' },
+		{ value: 'gecanceld', label: 'Geannuleerd' }
 	];
+
+	// Filter status options for non-admin users
+	$: statusOptions = isAdmin ? allStatusOptions : allStatusOptions.filter(option => option.value !== 'concept');
 
 	let currentUserId: string = '';
 	let currentUserLabels: string[] = [];
@@ -221,7 +228,6 @@
 		materialen?: string;
 		description?: string;
 		length?: number;
-		workshopType?: 'single' | 'multi-session';
 		sessions?: Array<{
 			start: string;
 			end: string;
@@ -328,7 +334,8 @@
 			if (lessonName) parts.push(lessonName);
 			
 			// Add multi-session indicator
-			if (event.extendedProps && event.extendedProps.workshopType === 'multi-session') {
+			// All workshops now use multi-session structure
+			if (event.extendedProps) {
 				const sessionCount = event.extendedProps.sessions ? 
 					event.extendedProps.sessions.filter(s => s.type === 'session').length : 0;
 				if (sessionCount > 1) {
@@ -464,9 +471,14 @@
 				Query.or([
 					Query.equal('teacher', ''),
 					Query.isNull('teacher'),
-					Query.equal('status', 'pending')
+					Query.equal('status', 'geplanned')
 				])
 			];
+			
+			// Hide concept workshops from non-admin users
+			if (!isAdmin) {
+				queries.push(Query.notEqual('status', 'concept'));
+			}
 			
 			// Add date range filters if provided
 			if (dateRange) {
@@ -493,6 +505,11 @@
 				Query.equal('teacher', currentUserId)
 			];
 			
+			// Hide concept workshops from non-admin users
+			if (!isAdmin) {
+				queries.push(Query.notEqual('status', 'concept'));
+			}
+			
 			// Add date range filters if provided
 			if (dateRange) {
 				queries.push(Query.greaterThanEqual('start', dateRange.start));
@@ -510,6 +527,11 @@
 	async function fetchAllEvents(dateRange?: {start: string, end: string}) {
 		try {
 			const queries: any[] = [];
+			
+			// Hide concept workshops from non-admin users
+			if (!isAdmin) {
+				queries.push(Query.notEqual('status', 'concept'));
+			}
 			
 			// Add date range filters if provided
 			if (dateRange) {
@@ -554,9 +576,9 @@
 				color: doc.teacher ? 'var(--accent)' : 'var(--warning)',
 				start: doc.start,
 				end: doc.end,
-				workshopType: doc.workshopType,
 				sessions: doc.sessions,
-				totalDuration: doc.totalDuration
+				totalDuration: doc.totalDuration,
+				eventType: doc.eventType
 			}
 		};
 	}
@@ -591,33 +613,28 @@
 			slotMinTime: '07:00:00',
 			slotMaxTime: '22:00:00',
 			eventContent: (info) => {
-				const time = info.timeText;
 				const event = info.event;
-				let schoolName = '';
-				let lessonName = '';
-				if (event.extendedProps && event.extendedProps.school) {
-					const schoolOpt = schoolOptions.find((opt) => opt.value === event.extendedProps.school);
-					if (schoolOpt) schoolName = schoolOpt.label;
-				}
-				if (event.extendedProps && event.extendedProps.lesson) {
-					const lessonOpt = lessonOptions.find((opt) => opt.value === event.extendedProps.lesson);
-					if (lessonOpt) lessonName = lessonOpt.label;
+				const title = event.title || '';
+				
+				// Format start and end times
+				let timeRange = '';
+				if (event.start && event.end) {
+					const startTime = new Date(event.start).toLocaleTimeString('nl-NL', { 
+						hour: '2-digit', 
+						minute: '2-digit' 
+					});
+					const endTime = new Date(event.end).toLocaleTimeString('nl-NL', { 
+						hour: '2-digit', 
+						minute: '2-digit' 
+					});
+					timeRange = `${startTime} - ${endTime}`;
 				}
 				
 				const parts = [];
-				if (time) parts.push(time);
-				if (schoolName) parts.push(schoolName);
-				if (lessonName) parts.push(lessonName);
+				if (timeRange) parts.push(`<strong>${timeRange}</strong>`);
+				if (title) parts.push(`<span class="event-title">${title}</span>`);
 				
-				if (event.extendedProps && event.extendedProps.workshopType === 'multi-session') {
-					const sessionCount = event.extendedProps.sessions ? 
-						event.extendedProps.sessions.filter(s => s.type === 'session').length : 0;
-					if (sessionCount > 1) {
-						parts.push(`📚 ${sessionCount} sessies`);
-					}
-				}
-				
-				return { html: parts.join('<br/>') };
+				return { html: `<div class="event-content">${parts.join('<br/>')}</div>` };
 			}
 		};
 	}
@@ -647,33 +664,28 @@
 			slotMinTime: '07:00:00',
 			slotMaxTime: '22:00:00',
 			eventContent: (info) => {
-				const time = info.timeText;
 				const event = info.event;
-				let schoolName = '';
-				let lessonName = '';
-				if (event.extendedProps && event.extendedProps.school) {
-					const schoolOpt = schoolOptions.find((opt) => opt.value === event.extendedProps.school);
-					if (schoolOpt) schoolName = schoolOpt.label;
-				}
-				if (event.extendedProps && event.extendedProps.lesson) {
-					const lessonOpt = lessonOptions.find((opt) => opt.value === event.extendedProps.lesson);
-					if (lessonOpt) lessonName = lessonOpt.label;
+				const title = event.title || '';
+				
+				// Format start and end times
+				let timeRange = '';
+				if (event.start && event.end) {
+					const startTime = new Date(event.start).toLocaleTimeString('nl-NL', { 
+						hour: '2-digit', 
+						minute: '2-digit' 
+					});
+					const endTime = new Date(event.end).toLocaleTimeString('nl-NL', { 
+						hour: '2-digit', 
+						minute: '2-digit' 
+					});
+					timeRange = `${startTime} - ${endTime}`;
 				}
 				
 				const parts = [];
-				if (time) parts.push(time);
-				if (schoolName) parts.push(schoolName);
-				if (lessonName) parts.push(lessonName);
+				if (timeRange) parts.push(`<strong>${timeRange}</strong>`);
+				if (title) parts.push(`<span class="event-title">${title}</span>`);
 				
-				if (event.extendedProps && event.extendedProps.workshopType === 'multi-session') {
-					const sessionCount = event.extendedProps.sessions ? 
-						event.extendedProps.sessions.filter(s => s.type === 'session').length : 0;
-					if (sessionCount > 1) {
-						parts.push(`📚 ${sessionCount} sessies`);
-					}
-				}
-				
-				return { html: parts.join('<br/>') };
+				return { html: `<div class="event-content">${parts.join('<br/>')}</div>` };
 			}
 		};
 	}
@@ -776,7 +788,7 @@
 	 */
 	async function claimEvent(event: any) {
 		if (!currentUserId) return;
-		const updatedEvent = { ...event, teacher: currentUserId, status: 'confirmed' };
+		const updatedEvent = { ...event, teacher: currentUserId, status: 'bevestigd' };
 		try {
 			await databases.updateDocument(databaseId, collectionId, updatedEvent.id, updatedEvent);
 			// @ts-ignore
@@ -797,22 +809,30 @@
 	 */
 	function openEditModal(event: any) {
 		editEvent = event;
-		description = event.description || '';
+		
+		// Handle different event object structures (calendar event vs database event)
+		const eventData = event.extendedProps || event;
+		
+		// Load only the fields we need
+		description = eventData.description || '';
 		let startStr = typeof event.start === 'string' ? event.start : event.start.toISOString();
 		editEventStart = startStr.slice(0, 16);
-		selectedLesson = lessonOptions.find((opt) => opt.value === event.lesson) || null;
-		selectedSchool = schoolOptions.find((opt) => opt.value === event.school) || null;
-		selectedGroup = event.group || '';
-		selectedTeacher = teacherOptions.find((opt) => opt.value === event.teacher) || null;
-		lessonLength = event.length || 45;
-		materialen = event.materialen || '';
-		status = event.status || 'pending';
+		selectedSchool = schoolOptions.find((opt) => opt.value === eventData.school) || null;
+		selectedTeacher = teacherOptions.find((opt) => opt.value === eventData.teacher) || null;
+		lessonLength = eventData.length || 45;
+		materialen = eventData.materialen || '';
+		status = eventData.status || 'concept';
+		
+		// Load eventType and title from saved data
+		// If eventType is not set, infer it from the data structure
+		eventType = eventData.eventType || (eventData.school ? 'schooldag' : 'event');
+		title = eventData.title || event.title || '';
 		
 		// Parse sessions from JSON string
 		eventSessions = [];
-		if (event.sessions) {
+		if (eventData.sessions) {
 			try {
-				eventSessions = typeof event.sessions === 'string' ? JSON.parse(event.sessions) : event.sessions;
+				eventSessions = typeof eventData.sessions === 'string' ? JSON.parse(eventData.sessions) : eventData.sessions;
 			} catch (e) {
 				console.error('Error parsing sessions:', e);
 				eventSessions = [];
@@ -826,13 +846,13 @@
 		editEvent = null;
 		description = '';
 		editEventStart = '';
-		selectedLesson = null;
 		selectedSchool = null;
-		selectedGroup = '';
 		selectedTeacher = null;
 		lessonLength = 45;
 		materialen = '';
-		status = 'pending';
+		status = isAdmin ? 'concept' : 'geplanned';
+		eventType = 'schooldag';
+		title = '';
 	}
 	function getEndTime() {
 		if (!editEventStart || !lessonLength) return '';
@@ -844,46 +864,39 @@
 		if (e && e.preventDefault) e.preventDefault();
 		if (!editEvent) return;
 		
-		// Handle both single and multi-session workshops
+		// Handle workshop editing
 		const formData = e.detail;
 		console.log('Editing workshop with data:', formData);
-		const workshopType = formData.workshopType || 'single';
 		
-		let endTime: string;
-		let totalMinutes: number;
+		// Use the end time of the last session
+		const lastSession = formData.sessions[formData.sessions.length - 1];
+		const endTime = lastSession.end;
+		const totalMinutes = formData.totalDuration;
 		
-		if (workshopType === 'single') {
-			totalMinutes = Number(formData.lessonLength);
-			const startDate = new Date(formData.editEventStart);
-			const endDate = new Date(startDate.getTime() + totalMinutes * 60000);
-			endTime = endDate.getFullYear() + '-' + 
-				String(endDate.getMonth() + 1).padStart(2, '0') + '-' + 
-				String(endDate.getDate()).padStart(2, '0') + 'T' + 
-				String(endDate.getHours()).padStart(2, '0') + ':' + 
-				String(endDate.getMinutes()).padStart(2, '0');
-		} else {
-			// For multi-session, use the end time of the last session
-			const lastSession = formData.sessions[formData.sessions.length - 1];
-			endTime = lastSession.end;
-			totalMinutes = formData.totalDuration;
+		// Resolve title based on event type
+		let resolvedTitle = '';
+		if (formData.eventType === 'event') {
+			resolvedTitle = formData.title || '';
+		} else if (formData.eventType === 'schooldag' && formData.selectedSchool) {
+			const schoolOpt = schoolOptions.find(opt => opt.value === formData.selectedSchool);
+			resolvedTitle = schoolOpt ? schoolOpt.label : '';
 		}
-		
+
 		// Only send fields that are part of the Appwrite schema (do not spread ...editEvent)
 		const updatedEvent = {
 			description: formData.description || '',
-			start: formData.editEventStart,
-			end: endTime,
-			lesson: formData.selectedLesson ? String(formData.selectedLesson) : '',
+			title: resolvedTitle,
+			start: formData.computedStart || formData.editEventStart,
+			end: formData.computedEnd || endTime,
 			school: formData.selectedSchool ? String(formData.selectedSchool) : '',
-			group: formData.selectedGroup || '',
 			teacher: formData.selectedTeacher ? String(formData.selectedTeacher) : '',
 			length: totalMinutes,
 			materialen: formData.materialen || '',
-			status: formData.selectedTeacher ? 'confirmed' : 'pending',
-			workshopType: workshopType,
-			sessions: workshopType === 'multi-session' ? JSON.stringify(formData.sessions) : JSON.stringify([]),
-			totalDuration: formData.totalDuration || totalMinutes
-		};
+			status: formData.selectedTeacher ? 'bevestigd' : 'geplanned',
+			sessions: formData.sessions && formData.sessions.length > 0 ? JSON.stringify(formData.sessions) : JSON.stringify([]),
+			totalDuration: formData.totalDuration || totalMinutes,
+			eventType: formData.eventType || 'schooldag',
+			};
 		console.log('Updating event with ID:', editEvent.id, 'Data:', updatedEvent);
 		try {
 			await databases.updateDocument(databaseId, collectionId, editEvent.id, updatedEvent);
@@ -912,13 +925,13 @@
 		editEventStart = now.toISOString().slice(0, 16);
 		const end = new Date(now.getTime() + 60 * 60 * 1000);
 		editEventEnd = end.toISOString().slice(0, 16);
-		selectedLesson = null;
 		selectedSchool = null;
-		selectedGroup = '';
 		selectedTeacher = null;
 		lessonLength = 45;
 		materialen = '';
-		status = 'pending';
+		status = isAdmin ? 'concept' : 'geplanned';
+		eventType = 'schooldag';
+		title = '';
 	}
 
 	function closeCreateModal() {
@@ -926,57 +939,50 @@
 		editEvent = null;
 		editEventStart = '';
 		editEventEnd = '';
-		selectedLesson = null;
 		selectedSchool = null;
-		selectedGroup = '';
 		selectedTeacher = null;
 		lessonLength = 45;
 		materialen = '';
-		status = 'pending';
+		status = isAdmin ? 'concept' : 'geplanned';
+		eventType = 'schooldag';
+		title = '';
 	}
 
 	async function submitCreateEvent(e: any) {
 		if (e && e.preventDefault) e.preventDefault();
 		
-		// Handle both single and multi-session workshops
+		// Handle workshop creation
 		const formData = e.detail;
 		console.log('Creating workshop with data:', formData);
-		const workshopType = formData.workshopType || 'single';
 		
-		let endTime: string;
-		let totalMinutes: number;
+		// Use the end time of the last session
+		const lastSession = formData.sessions[formData.sessions.length - 1];
+		const endTime = lastSession.end;
+		const totalMinutes = formData.totalDuration;
 		
-		if (workshopType === 'single') {
-			totalMinutes = Number(formData.lessonLength);
-			const startDate = new Date(formData.editEventStart);
-			const endDate = new Date(startDate.getTime() + totalMinutes * 60000);
-			endTime = endDate.getFullYear() + '-' + 
-				String(endDate.getMonth() + 1).padStart(2, '0') + '-' + 
-				String(endDate.getDate()).padStart(2, '0') + 'T' + 
-				String(endDate.getHours()).padStart(2, '0') + ':' + 
-				String(endDate.getMinutes()).padStart(2, '0');
-		} else {
-			// For multi-session, use the end time of the last session
-			const lastSession = formData.sessions[formData.sessions.length - 1];
-			endTime = lastSession.end;
-			totalMinutes = formData.totalDuration;
+		// Resolve title based on event type
+		let resolvedTitle = '';
+		if (formData.eventType === 'event') {
+			resolvedTitle = formData.title || '';
+		} else if (formData.eventType === 'schooldag' && formData.selectedSchool) {
+			const schoolOpt = schoolOptions.find(opt => opt.value === formData.selectedSchool);
+			resolvedTitle = schoolOpt ? schoolOpt.label : '';
 		}
-		
+
 		const newEvent = {
 			description: formData.description || '',
-			start: formData.editEventStart,
-			end: endTime,
-			lesson: formData.selectedLesson ? String(formData.selectedLesson) : '',
+			title: resolvedTitle,
+			start: formData.computedStart || formData.editEventStart,
+			end: formData.computedEnd || endTime,
 			school: formData.selectedSchool ? String(formData.selectedSchool) : '',
-			group: formData.selectedGroup || '',
 			teacher: formData.selectedTeacher ? String(formData.selectedTeacher) : '',
 			length: totalMinutes,
 			materialen: formData.materialen || '',
-			status: formData.selectedTeacher ? 'confirmed' : 'pending',
-			workshopType: workshopType,
-			sessions: workshopType === 'multi-session' ? JSON.stringify(formData.sessions) : JSON.stringify([]),
-			totalDuration: formData.totalDuration || totalMinutes
-		};
+			status: formData.selectedTeacher ? 'bevestigd' : 'geplanned',
+			sessions: formData.sessions && formData.sessions.length > 0 ? JSON.stringify(formData.sessions) : JSON.stringify([]),
+			totalDuration: formData.totalDuration || totalMinutes,
+			eventType: formData.eventType || 'schooldag',
+			};
 		console.log('Creating event with data:', newEvent);
 		try {
 			const doc = await databases.createDocument(databaseId, collectionId, 'unique()', newEvent);
@@ -1007,7 +1013,10 @@
 					length: doc.length,
 					color: doc.teacher ? 'var(--accent)' : 'var(--warning)',
 					start: doc.start,
-					end: doc.end
+					end: doc.end,
+					sessions: doc.sessions ? JSON.parse(doc.sessions) : [],
+					totalDuration: doc.totalDuration,
+					eventType: doc.eventType
 				}
 			};
 			options.update((current) => ({
@@ -1015,6 +1024,8 @@
 				events: [...current.events, eventForStore]
 			}));
 			closeCreateModal();
+			// Refresh the page to reload calendar data
+			window.location.reload();
 		} catch (e) {
 			console.error('Failed to create event:', e);
 			// Don't close modal on error so user can retry
@@ -1063,6 +1074,7 @@
 		
 		viewEvent = {
 			...props,
+			title: event.title || props.title || '',
 			id: workshopId,
 			lessonName: lessonOpt ? lessonOpt.label : '-',
 			lessonId: props.lesson,
@@ -1075,7 +1087,6 @@
 		};
 		console.log('viewEvent for modal (full object):', viewEvent);
 		console.log('viewEvent.sessions:', viewEvent.sessions);
-		console.log('viewEvent.workshopType:', viewEvent.workshopType);
 		
 		// Update the URL with the event id and current tab, without reloading
 		const eventId = viewEvent.id || viewEvent.$id;
@@ -1168,7 +1179,7 @@
 		try {
 			await databases.updateDocument(databaseId, collectionId, documentId, {
 				teacher: currentUserId,
-				status: 'confirmed'
+				status: 'bevestigd'
 			});
 			
 			// Update the events in the store
@@ -1176,7 +1187,7 @@
 				...current,
 				events: current.events.map((ev) => {
 					const evId = ev.id || ev.$id;
-					return evId === documentId ? { ...ev, teacher: currentUserId, status: 'confirmed', color: 'var(--accent)' } : ev;
+					return evId === documentId ? { ...ev, teacher: currentUserId, status: 'bevestigd', color: 'var(--accent)' } : ev;
 				})
 			}));
 			
@@ -1328,28 +1339,27 @@
 			{statusOptions}
 			isEdit={true}
 			initialValues={{
-				lesson: selectedLesson ? String(selectedLesson.value) : '',
 				school: selectedSchool ? String(selectedSchool.value) : '',
-				group: selectedGroup,
 				teacher: selectedTeacher ? String(selectedTeacher.value) : '',
 				length: lessonLength,
 				materialen,
 				status,
 				description,
 				start: editEventStart,
-				workshopType: eventSessions.length > 0 ? 'multi-session' : 'single',
 				sessions: eventSessions,
-				totalDuration: editEvent?.totalDuration || 0
+				totalDuration: editEvent?.totalDuration || 0,
+				eventType: eventType,
+				title: title
 			}}
-			bind:selectedLesson
 			bind:selectedSchool
-			bind:selectedGroup
 			bind:selectedTeacher
 			bind:lessonLength
 			bind:materialen
 			bind:status
 			bind:description
 			bind:editEventStart
+			bind:eventType
+			bind:title
 			on:submit={submitEditEvent}
 			on:cancel={closeEditModal}
 		/>
@@ -1366,15 +1376,15 @@
 			{statusOptions}
 			isEdit={false}
 			initialValues={{}}
-			bind:selectedLesson
 			bind:selectedSchool
-			bind:selectedGroup
 			bind:selectedTeacher
 			bind:lessonLength
 			bind:materialen
 			bind:status
 			bind:description
 			bind:editEventStart
+			bind:eventType
+			bind:title
 			on:submit={submitCreateEvent}
 			on:cancel={closeCreateModal}
 		/>
@@ -1388,6 +1398,8 @@
 			event={viewEvent} 
 			currentUser={{ $id: currentUserId }}
 			{isVakdocent}
+			{isAdmin}
+			{lessonOptions}
 			on:close={closeViewModal} 
 			on:edit={handleEditFromView}
 			on:accept={handleAcceptWorkshop}
@@ -1412,7 +1424,7 @@
 			<p>Voeg de planning toe aan je eigen kalender app:</p>
 			
 			<div class="ical-url-container">
-				<label for="ical-url">iCal Feed URL:</label>
+				<label for="ical-url">Alle Workshops (iCal Feed):</label>
 				<div class="url-input-group">
 					<input 
 						id="ical-url"
@@ -1432,6 +1444,57 @@
 					</button>
 				</div>
 			</div>
+			
+			{#if currentUserId}
+				<div class="personal-feeds-section">
+					<h3>Persoonlijke Kalender Feeds</h3>
+					<p>Gepersonaliseerde kalender feeds gebaseerd op je eigen planning:</p>
+					
+					<div class="ical-url-container">
+						<label for="beschikbaar-url">Beschikbare Workshops:</label>
+						<div class="url-input-group">
+							<input 
+								id="beschikbaar-url"
+								type="text" 
+								value="{window.location.origin}/beschikbaar/{currentUserId}.ics"
+								readonly
+								class="ical-url-input"
+							/>
+							<button 
+								class="copy-btn"
+								on:click={() => {
+									navigator.clipboard.writeText(`${window.location.origin}/beschikbaar/${currentUserId}.ics`);
+									alert('Beschikbare workshops URL gekopieerd naar klembord!');
+								}}
+							>
+								Kopieer
+							</button>
+						</div>
+					</div>
+					
+					<div class="ical-url-container">
+						<label for="mijn-planning-url">Mijn Planning:</label>
+						<div class="url-input-group">
+							<input 
+								id="mijn-planning-url"
+								type="text" 
+								value="{window.location.origin}/mijn-planning/{currentUserId}.ics"
+								readonly
+								class="ical-url-input"
+							/>
+							<button 
+								class="copy-btn"
+								on:click={() => {
+									navigator.clipboard.writeText(`${window.location.origin}/mijn-planning/${currentUserId}.ics`);
+									alert('Mijn planning URL gekopieerd naar klembord!');
+								}}
+							>
+								Kopieer
+							</button>
+						</div>
+					</div>
+				</div>
+			{/if}
 			
 			<div class="instructions">
 				<h3>Instructies per kalender app:</h3>
@@ -1498,6 +1561,14 @@
 		display: flex;
 		flex-direction: column;
 		gap: 1.5rem;
+	}
+
+	/* Wider modal on tablet and desktop */
+	@media (min-width: 769px) {
+		.modal {
+			width: 80vw;
+			max-width: 1200px;
+		}
 	}
 	@media (max-width: 768px) {
 		.modal {
@@ -1805,6 +1876,24 @@
 		margin-bottom: 0.5rem;
 	}
 	
+	.personal-feeds-section {
+		margin-top: 2rem;
+		padding-top: 2rem;
+		border-top: 1px solid var(--divider, #eaeaea);
+	}
+	
+	.personal-feeds-section h3 {
+		margin-bottom: 1rem;
+		color: var(--accent, #3ba39b);
+		font-size: 1.2rem;
+	}
+	
+	.personal-feeds-section p {
+		margin-bottom: 1.5rem;
+		color: var(--muted-foreground);
+		font-size: 0.95rem;
+	}
+	
 	.url-input-group {
 		display: flex;
 		gap: 0.5rem;
@@ -1942,5 +2031,34 @@
 	/* Style the "Vandaag" (Today) button to use foreground color */
 	:global(.ec-button) {
 		color: var(--foreground) !important;
+	}
+
+	/* Calendar event content styling */
+	:global(.event-content) {
+		text-align: left !important;
+		width: 100% !important;
+		display: flex !important;
+		flex-direction: column !important;
+		align-items: flex-start !important;
+	}
+
+	:global(.event-title) {
+		text-align: left !important;
+		width: 100% !important;
+		overflow: hidden !important;
+		text-overflow: ellipsis !important;
+		white-space: nowrap !important;
+	}
+
+	/* For narrow events, stack vertically */
+	@media (max-width: 768px) {
+		:global(.ec-event) {
+			min-height: 2.5rem !important;
+		}
+		
+		:global(.event-title) {
+			white-space: normal !important;
+			line-height: 1.2 !important;
+		}
 	}
 </style>

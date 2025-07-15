@@ -2,6 +2,26 @@
 
 @import 'tw-animate-css';
 
+/* DatePicker calendar styling with teal colors */
+[data-slot="calendar-day"][data-selected="true"] {
+	background-color: #14b8a6 !important; /* teal-500 */
+	color: white !important;
+	border-radius: 50% !important;
+}
+
+[data-slot="calendar-day"]:hover {
+	background-color: #5eead4 !important; /* teal-200 */
+	color: #0f172a !important; /* slate-900 */
+	border-radius: 50% !important;
+}
+
+[data-slot="calendar-day"]:focus-visible {
+	border-color: #14b8a6 !important; /* teal-500 */
+	border-width: 2px !important;
+	outline: 2px solid #14b8a6 !important;
+	border-radius: 50% !important;
+}
+
 /* === 🎨 Color Palette === */
 :root {
 	--color-patina-copper: #6e7c62;

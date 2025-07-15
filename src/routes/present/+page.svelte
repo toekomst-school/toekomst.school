@@ -2,7 +2,7 @@
 	import QrCode from 'svelte-qrcode';
 	import { onMount, onDestroy } from 'svelte';
 	import { marked } from 'marked';
-	import { createConnectionManager, type ConnectionManager, type SessionData } from '$lib/stores/connectionManager.js';
+	import { createSocketManager, type SocketManager, type SessionData } from '$lib/stores/socketManager.js';
 
 	let sessionCode = '';
 	let isPresenting = false;
@@ -10,8 +10,8 @@
 	let connectedDevices = 0;
 	let currentSlide = 0;
 	let totalSlides = 5; // Demo slides
-	// Connection manager (replaces polling)
-	let connectionManager: ConnectionManager | null = null;
+	// Socket.IO manager (replaces polling)
+	let socketManager: SocketManager | null = null;
 	let connectionState = 'disconnected';
 	let connectionError = '';
 	let isWebSocketConnected = false;
@@ -34,6 +34,8 @@
 	let timeUpdateInterval;
 	let currentTime = new Date();
 	let workshopData = null;
+	
+
 
 	// Generate a random 4-character code (A-Z, 0-9)
 	function generateCode() {
@@ -119,8 +121,8 @@
 	}
 
 	function startTimeTracking() {
-		// Update every second
-		timeUpdateInterval = setInterval(updateWorkshopTimeProgress, 1000);
+		// Update every 30 seconds for better performance
+		timeUpdateInterval = setInterval(updateWorkshopTimeProgress, 30000);
 		updateWorkshopTimeProgress(); // Initial update
 	}
 
@@ -205,6 +207,10 @@
 		if (urlSessionCode) {
 			sessionCode = urlSessionCode;
 			
+			// Setup Socket.IO connection immediately after getting session code
+			console.log('Setting up Socket.IO connection for existing session:', sessionCode);
+			setupSocketManager();
+			
 			// Load session data
 			try {
 				const response = await fetch(`/api/presentation/${sessionCode}`);
@@ -235,6 +241,10 @@
 			// Generate new session code for new presentations
 			sessionCode = generateCode();
 			
+			// Setup Socket.IO connection immediately after generating session code
+			console.log('Setting up Socket.IO connection for new session:', sessionCode);
+			setupSocketManager();
+			
 			// Load slides from lesson or workshop if specified
 			if (lessonId) {
 				await loadLessonData(lessonId);
@@ -242,25 +252,18 @@
 				await loadWorkshopData(workshopId);
 			}
 			
-			// Initialize presenter session with slides (if any)
-			await fetch(`/api/presentation/${sessionCode}`, {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({
-					type: 'init-presenter',
-					totalSlides: totalSlides,
-					slides: slides
-				})
-			});
+			// Initialize presenter session with Socket.IO
+			if (socketManager && slides) {
+				await socketManager.initPresenter(slides, totalSlides);
+			}
 			
 			// If we have slides, start immediately, otherwise wait for connection
 			if (slides && slides.trim()) {
 				console.log('Starting lesson with slides:', parsedSlides.length, 'slides');
 				await startLesson();
 			} else {
-				console.log('No slides found, starting waiting poll');
-				// Start polling to detect when a device connects
-				startWaitingPoll();
+				console.log('No slides found, waiting for connection via Socket.IO');
+				// Socket.IO connection will handle lesson updates via onLessonUpdate callback
 			}
 		}
 		
@@ -275,6 +278,11 @@
 				window.history.replaceState({}, '', newUrl);
 			}
 		}
+		
+		// Socket.IO connection already established above for both new and existing sessions
+		
+		// Add keyboard navigation
+		document.addEventListener('keydown', handleKeydown);
 		
 		// Add fullscreen change listeners
 		document.addEventListener('fullscreenchange', handleFullscreenChange);
@@ -353,11 +361,52 @@
 	}
 
 	onDestroy(() => {
-		if (connectionManager) {
-			connectionManager.disconnect();
+		if (socketManager) {
+			socketManager.disconnect();
 		}
 		stopTimeTracking();
+		
+		// Remove keyboard event listener
+		document.removeEventListener('keydown', handleKeydown);
 	});
+
+	// Keyboard navigation handler
+	function handleKeydown(e: KeyboardEvent) {
+		if (!isPresenting || !revealInstance) return;
+		
+		switch (e.key) {
+			case 'ArrowLeft':
+			case 'ArrowUp':
+				e.preventDefault();
+				handleCommand('prev', 'keyboard');
+				break;
+			case 'ArrowRight':
+			case 'ArrowDown':
+			case ' ': // Spacebar
+				e.preventDefault();
+				handleCommand('next', 'keyboard');
+				break;
+			case 'Home':
+				e.preventDefault();
+				handleCommand('first', 'keyboard');
+				break;
+			case 'End':
+				e.preventDefault();
+				handleCommand('last', 'keyboard');
+				break;
+			case 'f':
+			case 'F':
+				// Toggle fullscreen on 'f' key
+				e.preventDefault();
+				if (document.fullscreenElement) {
+					document.exitFullscreen();
+				} else {
+					requestFullscreen();
+				}
+				break;
+		}
+	}
+
 
 	// Connection manager callback functions
 	function handleSlideUpdate(current: number, total: number) {
@@ -369,7 +418,10 @@
 	function handleCommand(command: string, commandId: string) {
 		console.log('🎮 Command received:', { command, commandId });
 		
-		if (!revealInstance) return;
+		if (!revealInstance) {
+			console.warn('RevealJS not ready, ignoring command:', { command, commandId });
+			return;
+		}
 
 		switch (command) {
 			case 'next':
@@ -390,13 +442,13 @@
 		}
 	}
 
-	function handleLessonUpdate(slides: string, totalSlides: number, workshopData?: any) {
-		console.log('📚 Lesson update received:', { slidesLength: slides.length, totalSlides, hasWorkshopData: !!workshopData });
+	async function handleLessonUpdate(newSlides: string, totalSlidesCount: number, newWorkshopData?: any) {
+		console.log('📚 Lesson update received:', { slidesLength: newSlides.length, totalSlidesCount, hasWorkshopData: !!newWorkshopData });
 		
 		// Update slides data
-		if (slides) {
-			slides = slides;
-			const parsed = parseMarkdownSlidesWithNotes(slides);
+		if (newSlides) {
+			slides = newSlides;
+			const parsed = parseMarkdownSlidesWithNotes(newSlides);
 			parsedSlides = parsed.slides;
 			slideNotes = parsed.notes;
 			totalSlides = parsed.slides.length + 1; // +1 for end slide
@@ -404,16 +456,19 @@
 		}
 
 		// Update workshop data
-		if (workshopData) {
-			workshopData = workshopData;
-			workshopStartTime = workshopData.start;
-			workshopEndTime = workshopData.end;
+		if (newWorkshopData) {
+			workshopData = newWorkshopData;
+			workshopStartTime = newWorkshopData.start;
+			workshopEndTime = newWorkshopData.end;
 			startTimeTracking();
 		}
 
 		// Reinitialize Reveal.js with new slides if we're already presenting
 		if (isPresenting && revealInstance) {
-			initializeRevealJS();
+			// Destroy and recreate Reveal.js with new slides
+			revealInstance.destroy();
+			revealInstance = null;
+			await startLesson();
 		} else if (!isPresenting && slides) {
 			// Start lesson if we weren't presenting yet
 			startLesson();
@@ -445,10 +500,14 @@
 		}
 	}
 
-	function setupConnectionManager() {
-		if (!sessionCode) return;
+	function setupSocketManager() {
+		if (!sessionCode) {
+			console.warn('setupSocketManager called but no sessionCode available');
+			return;
+		}
 
-		connectionManager = createConnectionManager({
+		console.log('Creating Socket.IO manager for session:', sessionCode);
+		socketManager = createSocketManager({
 			sessionCode,
 			isPresenter: true,
 			onSlideUpdate: handleSlideUpdate,
@@ -459,20 +518,28 @@
 		});
 
 		// Subscribe to connection state changes
-		connectionManager.state.subscribe(state => {
+		socketManager.state.subscribe(state => {
 			connectionState = state;
+			console.log('Socket.IO state changed to:', state);
 		});
 
-		connectionManager.error.subscribe(error => {
+		socketManager.error.subscribe(error => {
 			connectionError = error;
+			if (error) console.error('Socket.IO error:', error);
 		});
 
-		connectionManager.isConnected.subscribe(connected => {
-			isWebSocketConnected = connectionManager?.getConnectionInfo().isWebSocket || false;
+		socketManager.isConnected.subscribe(connected => {
+			console.log('Socket.IO connection status changed:', { connected });
+		});
+		
+		socketManager.transport.subscribe(transport => {
+			isWebSocketConnected = transport === 'websocket';
+			console.log('Socket.IO transport changed:', { transport, isWebSocket: isWebSocketConnected });
 		});
 
 		// Connect to the session
-		connectionManager.connect();
+		console.log('Initiating Socket.IO connection to session:', sessionCode);
+		socketManager.connect();
 	}
 
 	async function startLesson() {
@@ -481,10 +548,6 @@
 		
 		// Start time tracking
 		startTimeTracking();
-		
-		// Clear any existing polling intervals
-		if (pollInterval) clearInterval(pollInterval);
-		if (commandPollInterval) clearInterval(commandPollInterval);
 		
 		// Wait for DOM to be ready if starting immediately after mount
 		if (!presentationComponent) {
@@ -532,6 +595,15 @@
 			await revealInstance.initialize();
 			console.log('Reveal.js initialized successfully');
 			
+			// Jump to the first slide
+			revealInstance.slide(0);
+			currentSlide = 0;
+			currentSlideNotes = slideNotes[0] || '';
+			console.log('Jumped to first slide (slide 0)');
+			
+			// Send slide change update to controllers
+			updateSlide();
+			
 			// Fullscreen will be triggered on first user interaction
 			
 			// Listen for slide changes
@@ -540,6 +612,9 @@
 				// Update current slide notes
 				currentSlideNotes = slideNotes[currentSlide] || '';
 				updateSlide();
+				
+				// Reset keyboard navigation flag
+				isChangingSlide = false;
 				
 				// Trigger confetti only on the hardcoded workshop end slide
 				const currentSlideElement = revealInstance.getCurrentSlide();
@@ -561,182 +636,16 @@
 			});
 		}
 		
-		// Initialize presenter session with slides if available
-		await fetch(`/api/presentation/${sessionCode}`, {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({
-				type: 'init-presenter',
-				totalSlides: totalSlides,
-				slides: slides
-			})
-		});
+		// Initialize presenter session with Socket.IO
+		if (socketManager && slides) {
+			await socketManager.initPresenter(slides, totalSlides);
+		}
 
-		// Start polling for session updates
-		pollInterval = setInterval(async () => {
-			try {
-				const response = await fetch(`/api/presentation/${sessionCode}`);
-				if (response.ok) {
-					const data = await response.json();
-					connectedDevices = data.connectedDevices;
-					
-					// Log all received data from API
-					console.log('📋 PRESENT PAGE - All data received from API:', {
-						hasSlides: !!data.slides,
-						hasWorkshopData: !!data.workshopData,
-						hasWorkshopStart: !!data.workshopStartTime,
-						hasWorkshopEnd: !!data.workshopEndTime,
-						workshopTitle: data.workshopData?.title,
-						workshopStart: data.workshopStartTime,
-						workshopEnd: data.workshopEndTime,
-						allKeys: Object.keys(data)
-					});
-					
-					// Update workshop timing if available (even if slides haven't changed)
-					if (data.workshopData && data.workshopStartTime && data.workshopEndTime && 
-						(!workshopStartTime || !workshopEndTime)) {
-						workshopData = data.workshopData;
-						workshopStartTime = data.workshopStartTime;
-						workshopEndTime = data.workshopEndTime;
-						console.log('🕐 UPDATING workshop timing from polling:', {
-							start: workshopStartTime,
-							end: workshopEndTime,
-							title: workshopData?.title
-						});
-						
-						// Start time tracking if not already started
-						if (!timeUpdateInterval) {
-							startTimeTracking();
-							console.log('🕐 Started time tracking from polling data');
-						}
-					}
-					
-					// Check if slides have been updated by a connecting device
-					if (data.slides && data.slides !== slides) {
-						slides = data.slides;
-						totalSlides = data.totalSlides || countSlidesInMarkdown(slides);
-						const parsed = parseMarkdownSlidesWithNotes(slides);
-						parsedSlides = parsed.slides;
-						slideNotes = parsed.notes;
-						// Update current slide notes
-						currentSlideNotes = slideNotes[currentSlide] || '';
-						
-						// Update workshop data if provided
-						if (data.workshopData) {
-							workshopData = data.workshopData;
-							workshopStartTime = data.workshopStartTime;
-							workshopEndTime = data.workshopEndTime;
-							console.log('📅 FULL WORKSHOP DATA RECEIVED FROM CONNECT PAGE:');
-							console.log('  🏢 Title:', workshopData.title);
-							console.log('  🏫 School ID:', workshopData.school);
-							console.log('  🏫 School Name:', workshopData.schoolName);
-							console.log('  📚 Group/Class:', workshopData.group);
-							console.log('  👨‍🏫 Teacher:', workshopData.teacher);
-							console.log('  📍 Start Time:', workshopStartTime, '→', new Date(workshopStartTime).toLocaleString('nl-NL'));
-							console.log('  📍 End Time:', workshopEndTime, '→', new Date(workshopEndTime).toLocaleString('nl-NL'));
-							console.log('  ⏱️ Duration:', Math.round((new Date(workshopEndTime).getTime() - new Date(workshopStartTime).getTime()) / (1000 * 60)), 'minutes');
-							console.log('  🔍 All workshop fields:', Object.keys(workshopData));
-							
-							// Start time tracking now that we have workshop data
-							if (!timeUpdateInterval) {
-								startTimeTracking();
-								console.log('🕐 Started time tracking with workshop data');
-							}
-						}
-						
-						// Reinitialize Reveal.js with new slides
-						if (revealInstance) {
-							revealInstance.destroy();
-							revealInstance = null;
-						}
-						
-						// Wait a moment for DOM to update, then reinitialize
-						setTimeout(async () => {
-							if (presentationComponent && revealLoaded && (window as any).Reveal) {
-								const Reveal = (window as any).Reveal;
-								revealInstance = new Reveal(presentationComponent, {
-									hash: true,
-									center: true,
-									transition: 'slide',
-									transitionSpeed: 'fast',
-									backgroundTransition: 'slide',
-									controls: false,
-									progress: false,
-									keyboard: true,
-									touch: true,
-									loop: false,
-									rtl: false,
-									navigationMode: 'default',
-									shuffle: false,
-									fragments: true,
-									fragmentInURL: false,
-									embedded: false,
-									help: true,
-									showNotes: false,
-									autoSlide: 0,
-									autoSlideStoppable: true,
-									mouseWheel: false,
-									hideInactiveCursor: true,
-									hideCursorTime: 5000,
-									previewLinks: false,
-									focusBodyOnPageVisibilityChange: true,
-									theme: 'white',
-									parallaxBackgroundImage: '',
-									parallaxBackgroundSize: '',
-									parallaxBackgroundHorizontal: null,
-									parallaxBackgroundVertical: null
-								});
-								
-								await revealInstance.initialize();
-								
-								// Listen for slide changes
-								revealInstance.addEventListener('slidechanged', (event: any) => {
-									currentSlide = event.indexh;
-									// Update current slide notes
-									currentSlideNotes = slideNotes[currentSlide] || '';
-									updateSlide();
-									
-									// Trigger confetti only on the hardcoded workshop end slide
-									const currentSlideElement = revealInstance.getCurrentSlide();
-									if (currentSlideElement && currentSlideElement.getAttribute('data-slide') === 'last') {
-										if (!confettiTriggered) {
-											console.log('🎉 TRIGGERING CONFETTI on hardcoded workshop end slide!');
-											confettiTriggered = true;
-											triggerConfetti();
-										}
-									} else {
-										// Reset confetti flag when leaving the last slide
-										confettiTriggered = false;
-									}
-								});
-							}
-						}, 100);
-					}
-				}
-			} catch (error) {
-				console.error('Error polling session data:', error);
-			}
-		}, 2000);
-
-		// Start polling for remote commands
-		commandPollInterval = setInterval(async () => {
-			try {
-				const response = await fetch(`/api/presentation/${sessionCode}/commands?since=${lastCommandCheck}`);
-				if (response.ok) {
-					const data = await response.json();
-					
-					data.commands.forEach((cmd: any) => {
-						handleRemoteCommand(cmd.command);
-					});
-					
-					if (data.lastUpdate) {
-						lastCommandCheck = data.lastUpdate;
-					}
-				}
-			} catch (error) {
-				console.error('Error polling commands:', error);
-			}
-		}, 500);
+		// Socket.IO connection will handle all real-time updates:
+		// - Session data via handleSessionState
+		// - Commands via handleCommand
+		// - Lesson updates via handleLessonUpdate
+		// - Controller count via handleControllerCount
 	}
 
 	async function stopLesson() {
@@ -748,13 +657,10 @@
 			revealInstance = null;
 		}
 		
-		// Clear intervals
-		if (pollInterval) clearInterval(pollInterval);
-		if (commandPollInterval) clearInterval(commandPollInterval);
+		// Clear intervals (now handled by WebSocket connection)
 		stopTimeTracking();
 		
-		// Clean up session
-		await fetch(`/api/presentation/${sessionCode}`, { method: 'DELETE' });
+		// Clean up session will be handled by Socket.IO disconnect
 		
 		// Generate new session
 		sessionCode = generateCode();
@@ -816,17 +722,9 @@
 	}
 
 	async function updateSlide() {
-		if (!isPresenting) return;
+		if (!isPresenting || !socketManager) return;
 		
-		await fetch(`/api/presentation/${sessionCode}`, {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({
-				type: 'slide-change',
-				current: currentSlide,
-				total: totalSlides
-			})
-		});
+		await socketManager.sendSlideChange(currentSlide, totalSlides);
 	}
 
 	function copyCode() {
@@ -912,38 +810,6 @@
 		}, 5000);
 	}
 
-	function startWaitingPoll() {
-		// Clear any existing polling first
-		if (pollInterval) clearInterval(pollInterval);
-		
-		pollInterval = setInterval(async () => {
-			try {
-				const response = await fetch(`/api/presentation/${sessionCode}`);
-				if (response.ok) {
-					const data = await response.json();
-					connectedDevices = data.connectedDevices;
-					
-					// Check if a device connected with slides
-					if (data.slides && data.slides.trim() && !isPresenting) {
-						slides = data.slides;
-						totalSlides = data.totalSlides || countSlidesInMarkdown(slides);
-						const parsed = parseMarkdownSlidesWithNotes(slides);
-						parsedSlides = parsed.slides;
-						slideNotes = parsed.notes;
-						// Update current slide notes
-						currentSlideNotes = slideNotes[currentSlide] || '';
-						
-						// Auto-start the presentation
-						await startLesson();
-						
-						// The startLesson() function already clears intervals, so we don't need to do it here
-					}
-				}
-			} catch (error) {
-				console.error('Error polling for connection:', error);
-			}
-		}, 1000);
-	}
 
 	function handleSlideClick(event: MouseEvent) {
 		// Auto-fullscreen on first click
@@ -1021,6 +887,9 @@
 				</div>
 				<div class="controls-group">
 					<span class="session-code">{sessionCode}</span>
+					{#if !isWebSocketConnected}
+						<span class="connection-status">HTTP</span>
+					{/if}
 					<button class="fullscreen-btn" class:active={isFullscreen} on:click={toggleFullscreen} title="Volledig scherm">
 						{#if isFullscreen}⤓{:else}⤢{/if}
 					</button>
@@ -1385,6 +1254,17 @@
 		padding: 0.3rem 0.6rem;
 		border-radius: 6px;
 		border: 1px solid rgba(59, 163, 155, 0.3);
+	}
+	
+	.connection-status {
+		font-family: 'IBM Plex Mono', 'Space Mono', monospace;
+		font-size: 0.8rem;
+		font-weight: 500;
+		color: #888;
+		background: rgba(136, 136, 136, 0.1);
+		padding: 0.2rem 0.4rem;
+		border-radius: 4px;
+		border: 1px solid rgba(136, 136, 136, 0.2);
 	}
 
 	.controls-group {
