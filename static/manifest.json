@@ -77,5 +77,19 @@
   "prefer_related_applications": false,
   "edge_side_panel": {
     "preferred_width": 400
-  }
+  },
+  "screenshots": [
+    {
+      "src": "/images/screenshot_desktop.png",
+      "sizes": "1280x720",
+      "type": "image/png",
+      "label": "Desktop screenshot"
+    },
+    {
+      "src": "/images/screenshot_mobile.png",
+      "sizes": "375x812",
+      "type": "image/png",
+      "label": "Mobile screenshot"
+    }
+  ]
 }
