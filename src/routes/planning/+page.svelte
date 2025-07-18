@@ -17,6 +17,9 @@
 	import WorkshopView from '$lib/components/WorkshopView.svelte';
 	import { appwrite } from '$lib/appwrite';
 	import { goto } from '$app/navigation';
+	import { teamStore } from '$lib/stores/team';
+	import { onMount as onMountSvelte } from 'svelte';
+	import { _ } from 'svelte-i18n';
 
 	// Calculate Monday of this week
 	const now = new Date();
@@ -28,7 +31,7 @@
 		// Available event (orange)
 		{
 			id: eventIdCounter++,
-			title: 'Workshop: Robotica',
+			title: $_('planning.workshop_robotics'),
 			start: new Date(
 				monday.getFullYear(),
 				monday.getMonth(),
@@ -44,7 +47,7 @@
 		// My event (teal)
 		{
 			id: eventIdCounter++,
-			title: 'Workshop: 3D Printen',
+			title: $_('planning.workshop_3d_printing'),
 			start: new Date(
 				monday.getFullYear(),
 				monday.getMonth(),
@@ -66,7 +69,7 @@
 		// Available event (orange)
 		{
 			id: eventIdCounter++,
-			title: 'Kinderfeestje: Spelletjes',
+			title: $_('planning.children_party_games'),
 			start: new Date(
 				monday.getFullYear(),
 				monday.getMonth(),
@@ -88,7 +91,7 @@
 		// My event (teal)
 		{
 			id: eventIdCounter++,
-			title: 'Digi Scouting: Code Challenge',
+			title: $_('planning.digi_scouting_code'),
 			start: new Date(
 				monday.getFullYear(),
 				monday.getMonth(),
@@ -110,7 +113,7 @@
 		// Available event (orange)
 		{
 			id: eventIdCounter++,
-			title: 'Kinderfeestje: Wetenschap',
+			title: $_('planning.children_party_science'),
 			start: new Date(
 				monday.getFullYear(),
 				monday.getMonth(),
@@ -159,13 +162,13 @@
 	let eventType: 'schooldag' | 'event' = 'schooldag';
 	let title: string = '';
 	const allStatusOptions = [
-		{ value: 'concept', label: 'Concept' },
-		{ value: 'geplanned', label: 'Gepland' },
-		{ value: 'gekoppeld', label: 'Gekoppeld' },
-		{ value: 'bevestigd', label: 'Bevestigd' },
-		{ value: 'in_uitvoering', label: 'In uitvoering' },
-		{ value: 'afgerond', label: 'Afgerond' },
-		{ value: 'gecanceld', label: 'Geannuleerd' }
+		{ value: 'concept', label: $_('planning.status_concept') },
+		{ value: 'geplanned', label: $_('planning.status_planned') },
+		{ value: 'gekoppeld', label: $_('planning.status_linked') },
+		{ value: 'bevestigd', label: $_('planning.status_confirmed') },
+		{ value: 'in_uitvoering', label: $_('planning.status_in_progress') },
+		{ value: 'afgerond', label: $_('planning.status_completed') },
+		{ value: 'gecanceld', label: $_('planning.status_cancelled') }
 	];
 
 	// Filter status options for non-admin users
@@ -174,6 +177,9 @@
 	let currentUserId: string = '';
 	let currentUserLabels: string[] = [];
 	let isAdmin: boolean = false;
+	
+	// Team options for vakdocenten assignment
+	let teamOptions: Option[] = [];
 	let isVakdocent: boolean = false;
 	let currentTab: string = 'beschikbaar'; // 'beschikbaar', 'mijn-planning', or 'alle-workshops'
 	let currentCalendarView: string = 'dayGridMonth'; // Track current calendar view
@@ -268,10 +274,10 @@
 			end: window.innerWidth <= 768 ? 'listWeek,timeGridWeek,dayGridMonth' : 'dayGridMonth,timeGridWeek,listWeek'
 		},
 		buttonText: {
-			today: 'Vandaag',
-			dayGridMonth: 'Maand',
-			timeGridWeek: 'Week',
-			listWeek: 'Lijst'
+			today: $_('planning.today'),
+			dayGridMonth: $_('planning.month'),
+			timeGridWeek: $_('planning.week'),
+			listWeek: $_('planning.list')
 		},
 		eventClick: handleEventClick,
 		viewDidMount: (info) => {
@@ -313,38 +319,28 @@
 		slotMaxTime: '22:00:00',
 		// slotLabelInterval: 30,
 		eventContent: (info) => {
-			// Show time, school name, and lesson title on separate lines
-			const time = info.timeText;
 			const event = info.event;
-			let schoolName = '';
-			let lessonName = '';
-			if (event.extendedProps && event.extendedProps.school) {
-				const schoolOpt = schoolOptions.find((opt) => opt.value === event.extendedProps.school);
-				if (schoolOpt) schoolName = schoolOpt.label;
-			}
-			if (event.extendedProps && event.extendedProps.lesson) {
-				const lessonOpt = lessonOptions.find((opt) => opt.value === event.extendedProps.lesson);
-				if (lessonOpt) lessonName = lessonOpt.label;
+			const title = event.title || '';
+			
+			// Format start and end times
+			let timeRange = '';
+			if (event.start && event.end) {
+				const startTime = new Date(event.start).toLocaleTimeString('nl-NL', { 
+					hour: '2-digit', 
+					minute: '2-digit' 
+				});
+				const endTime = new Date(event.end).toLocaleTimeString('nl-NL', { 
+					hour: '2-digit', 
+					minute: '2-digit' 
+				});
+				timeRange = `${startTime} - ${endTime}`;
 			}
 			
-			// Build the display with line breaks
 			const parts = [];
-			if (time) parts.push(time);
-			if (schoolName) parts.push(schoolName);
-			if (lessonName) parts.push(lessonName);
+			if (timeRange) parts.push(`<strong>${timeRange}</strong>`);
+			if (title) parts.push(`<span class="event-title">${title}</span>`);
 			
-			// Add multi-session indicator
-			// All workshops now use multi-session structure
-			if (event.extendedProps) {
-				const sessionCount = event.extendedProps.sessions ? 
-					event.extendedProps.sessions.filter(s => s.type === 'session').length : 0;
-				if (sessionCount > 1) {
-					parts.push(`📚 ${sessionCount} sessies`);
-				}
-			}
-			
-			// Return as HTML with <br/>
-			return { html: parts.join('<br/>') };
+			return { html: `<div class="event-content">${parts.join('<br/>')}</div>` };
 		}
 	});
 
@@ -480,6 +476,13 @@
 				queries.push(Query.notEqual('status', 'concept'));
 			}
 			
+			// Add team context filtering (if team is selected and user is not admin)
+			if (!isAdmin && $teamStore.selectedTeam && $teamStore.selectedTeam.$id) {
+				// For now, we'll filter by checking if the user is in the team
+				// In the future, workshops should have a team field
+				queries.push(Query.equal('teamId', $teamStore.selectedTeam.$id));
+			}
+			
 			// Add date range filters if provided
 			if (dateRange) {
 				queries.push(Query.greaterThanEqual('start', dateRange.start));
@@ -510,6 +513,11 @@
 				queries.push(Query.notEqual('status', 'concept'));
 			}
 			
+			// Add team context filtering (if team is selected and user is not admin)
+			if (!isAdmin && $teamStore.selectedTeam && $teamStore.selectedTeam.$id) {
+				queries.push(Query.equal('teamId', $teamStore.selectedTeam.$id));
+			}
+			
 			// Add date range filters if provided
 			if (dateRange) {
 				queries.push(Query.greaterThanEqual('start', dateRange.start));
@@ -533,6 +541,11 @@
 				queries.push(Query.notEqual('status', 'concept'));
 			}
 			
+			// Add team context filtering (if team is selected and user is not admin)
+			if (!isAdmin && $teamStore.selectedTeam && $teamStore.selectedTeam.$id) {
+				queries.push(Query.equal('teamId', $teamStore.selectedTeam.$id));
+			}
+			
 			// Add date range filters if provided
 			if (dateRange) {
 				queries.push(Query.greaterThanEqual('start', dateRange.start));
@@ -549,9 +562,25 @@
 
 	// Helper function to map document to event format
 	function mapDocumentToEvent(doc: any) {
+		// Create title: school name OR event name (without klas)
+		let title = '';
+		
+		// Get the base name (school name or event name)
+		if (doc.school) {
+			const schoolOpt = schoolOptions.find(opt => opt.value === doc.school);
+			title = schoolOpt ? schoolOpt.label : 'School';
+		} else if (doc.description && doc.description.trim()) {
+			title = doc.description;
+		} else if (doc.lesson) {
+			const lessonOpt = lessonOptions.find(opt => opt.value === doc.lesson);
+			title = lessonOpt ? lessonOpt.label : 'Workshop';
+		} else {
+			title = 'Workshop';
+		}
+		
 		return {
 			id: doc.$id,
-			title: doc.title || '',
+			title: title,
 			start: String(doc.start),
 			end: String(doc.end),
 			color: doc.teacher ? 'var(--accent)' : 'var(--warning)',
@@ -602,10 +631,10 @@
 				end: window.innerWidth <= 768 ? 'listWeek,timeGridWeek,dayGridMonth' : 'dayGridMonth,timeGridWeek,listWeek'
 			},
 			buttonText: {
-				today: 'Vandaag',
-				dayGridMonth: 'Maand',
-				timeGridWeek: 'Week',
-				listWeek: 'Lijst'
+				today: $_('planning.today'),
+				dayGridMonth: $_('planning.month'),
+				timeGridWeek: $_('planning.week'),
+				listWeek: $_('planning.list')
 			},
 			eventClick: handleEventClick,
 			viewDidMount: handleAvailableViewDidMount,
@@ -653,10 +682,10 @@
 				end: window.innerWidth <= 768 ? 'listWeek,timeGridWeek,dayGridMonth' : 'dayGridMonth,timeGridWeek,listWeek'
 			},
 			buttonText: {
-				today: 'Vandaag',
-				dayGridMonth: 'Maand',
-				timeGridWeek: 'Week',
-				listWeek: 'Lijst'
+				today: $_('planning.today'),
+				dayGridMonth: $_('planning.month'),
+				timeGridWeek: $_('planning.week'),
+				listWeek: $_('planning.list')
 			},
 			eventClick: handleEventClick,
 			viewDidMount: handleMyViewDidMount,
@@ -746,14 +775,14 @@
 			const lessonsRes = await databases.listDocuments('lessen', 'les');
 			lessonOptions = lessonsRes.documents.map((lesson) => ({
 				value: lesson.$id,
-				label: lesson.onderwerp || lesson.lesnummer || 'Les zonder naam'
+				label: lesson.onderwerp || lesson.lesnummer || $_('planning.lesson_no_name')
 			}));
 
 			// Fetch vakdocenten for the select
 			const teachersRes = await databases.listDocuments('lessen', 'vakdocent');
 			teacherOptions = teachersRes.documents.map((teacher) => ({
 				value: teacher.$id,
-				label: teacher.name || teacher.email || 'Vakdocent zonder naam'
+				label: teacher.name || teacher.email || $_('planning.teacher_no_name')
 			}));
 
 			// Fetch only client schools (KLANT = true) from correct DB/collection
@@ -772,6 +801,9 @@
 			isAdmin = currentUserLabels.includes('admin');
 			isVakdocent = currentUserLabels.includes('vakdocent');
 			
+			// Load teams for team selection (now that we have currentUserId)
+			await loadTeams();
+			
 			// Load data for the current tab
 			await loadCurrentTabData();
 		} catch (e) {
@@ -782,6 +814,65 @@
 			console.error('Failed to fetch planning events, user, lessons, vakdocenten, or schools:', e);
 		}
 	});
+
+	// Load teams for team selection
+	async function loadTeams() {
+		try {
+			// Make sure we have a user ID before requesting teams
+			if (!currentUserId) {
+				console.warn('No current user ID available for teams request');
+				return;
+			}
+			
+			const response = await fetch(`/api/teams?userId=${encodeURIComponent(currentUserId)}`, {
+				headers: {
+					'Content-Type': 'application/json',
+				}
+			});
+			
+			if (!response.ok) {
+				console.warn('Teams API not available, continuing without teams');
+				return;
+			}
+			
+			const data = await response.json();
+			
+			if (data.success && data.teams) {
+				teamStore.setTeams(data.teams);
+				
+				// Show all teams for now - you can filter later if needed
+				teamOptions = data.teams
+					.filter((team: any) => team.name) // Just ensure team has a name
+					.map((team: any) => ({
+						value: team.$id,
+						label: team.name,
+						group: team.name.toLowerCase().includes('vakdocent') ? 'Vakdocenten Teams' : 'Other Teams'
+					}));
+				
+				console.log('Loaded teams:', data.teams);
+				console.log('Team options for form:', teamOptions);
+				
+				// If no team is selected yet and user has teams, auto-select the first one
+				// This will respect any previously saved team selection from localStorage
+				if (!$teamStore.selectedTeam && data.teams.length > 0) {
+					teamStore.setSelectedTeam(data.teams[0]);
+				}
+				
+				// If we have a selected team but it's not in the current teams list, 
+				// find and set the actual team object
+				if ($teamStore.selectedTeam && $teamStore.selectedTeam.$id && !$teamStore.selectedTeam.name) {
+					const fullTeam = data.teams.find(t => t.$id === $teamStore.selectedTeam.$id);
+					if (fullTeam) {
+						teamStore.setSelectedTeam(fullTeam);
+					}
+				}
+			} else {
+				console.warn('No teams found or teams API error:', data.error);
+			}
+		} catch (error) {
+			console.warn('Teams API not available, continuing without teams:', error);
+		}
+	}
 
 	/**
 	 * @param {any} event
@@ -896,6 +987,7 @@
 			sessions: formData.sessions && formData.sessions.length > 0 ? JSON.stringify(formData.sessions) : JSON.stringify([]),
 			totalDuration: formData.totalDuration || totalMinutes,
 			eventType: formData.eventType || 'schooldag',
+			assignedTeams: formData.assignedTeams && formData.assignedTeams.length > 0 ? JSON.stringify(formData.assignedTeams) : JSON.stringify([])
 			};
 		console.log('Updating event with ID:', editEvent.id, 'Data:', updatedEvent);
 		try {
@@ -982,6 +1074,8 @@
 			sessions: formData.sessions && formData.sessions.length > 0 ? JSON.stringify(formData.sessions) : JSON.stringify([]),
 			totalDuration: formData.totalDuration || totalMinutes,
 			eventType: formData.eventType || 'schooldag',
+			teamId: ($teamStore.selectedTeam && $teamStore.selectedTeam.$id) ? $teamStore.selectedTeam.$id : '',
+			assignedTeams: formData.assignedTeams && formData.assignedTeams.length > 0 ? JSON.stringify(formData.assignedTeams) : JSON.stringify([])
 			};
 		console.log('Creating event with data:', newEvent);
 		try {
@@ -1136,6 +1230,36 @@
 		openEditModal(event);
 	}
 
+	// Function to fetch a specific event from the server
+	async function fetchEventById(eventId: string) {
+		try {
+			const event = await databases.getDocument(databaseId, collectionId, eventId);
+			// Transform the event to match the expected format
+			const transformedEvent = {
+				id: event.$id,
+				$id: event.$id,
+				title: event.description || `Lesson: ${event.lesson}`,
+				start: event.start,
+				end: event.end,
+				status: event.status,
+				teacher: event.teacher,
+				lesson: event.lesson,
+				school: event.school,
+				group: event.group,
+				materialen: event.materialen,
+				description: event.description,
+				length: event.length,
+				sessions: event.sessions,
+				totalDuration: event.totalDuration,
+				color: event.status === 'bevestigd' ? 'var(--accent)' : 'var(--warning)'
+			};
+			return transformedEvent;
+		} catch (error) {
+			console.error('Failed to fetch event by ID:', error);
+			return null;
+		}
+	}
+
 	// Handle URL parameters for direct links to workshops
 	$: {
 		const eventIdFromUrl = $page.url.searchParams.get('id');
@@ -1147,9 +1271,13 @@
 		}
 		
 		// Open workshop modal if ID is in URL and not already open and not intentionally closing
-		if (eventIdFromUrl && !showViewModal && !isClosingModal && $options && $options.events) {
-			// Find the event in the current events list
-			const event = $options.events.find((ev) => ev.id === eventIdFromUrl || ev.$id === eventIdFromUrl);
+		if (eventIdFromUrl && !showViewModal && !isClosingModal) {
+			// First try to find the event in the current events list
+			let event = null;
+			if ($options && $options.events) {
+				event = $options.events.find((ev) => ev.id === eventIdFromUrl || ev.$id === eventIdFromUrl);
+			}
+			
 			if (event) {
 				// Use a timeout to ensure the data is loaded before opening modal
 				setTimeout(() => {
@@ -1157,6 +1285,13 @@
 						openViewModal(event);
 					}
 				}, 100);
+			} else {
+				// If event not found in current list, fetch it from server
+				fetchEventById(eventIdFromUrl).then((fetchedEvent) => {
+					if (fetchedEvent && !isClosingModal) {
+						openViewModal(fetchedEvent);
+					}
+				});
 			}
 		}
 	}
@@ -1195,11 +1330,11 @@
 			closeViewModal();
 			
 			// Show success message (optional)
-			alert('Workshop succesvol geaccepteerd!');
+			alert($_('planning.workshop_accepted'));
 			
 		} catch (error) {
 			console.error('Failed to accept workshop:', error);
-			alert('Kon workshop niet accepteren. Probeer opnieuw.');
+			alert($_('planning.workshop_accept_error'));
 		}
 	}
 
@@ -1225,7 +1360,7 @@
 	<button 
 		class="ical-btn"
 		on:click={openIcalModal}
-		aria-label="iCal feed instructies"
+		aria-label={$_('planning.ical_instructions')}
 	>
 		<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
 			<rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
@@ -1237,6 +1372,29 @@
 </div>
 
 <div class="tab-container">
+	{#if $teamStore.teams.length > 1}
+		<div class="team-selector">
+			<label for="team-select">{$_('planning.team')}:</label>
+			<select 
+				id="team-select"
+				value={$teamStore.selectedTeam?.$id || ''}
+				on:change={async (e) => {
+					const selectedTeamId = e.target.value;
+					const selectedTeam = $teamStore.teams.find(team => team.$id === selectedTeamId);
+					if (selectedTeam) {
+						teamStore.setSelectedTeam(selectedTeam);
+						await loadCurrentTabData();
+					}
+				}}
+			>
+				<option value="">Selecteer een team</option>
+				{#each $teamStore.teams as team}
+					<option value={team.$id}>{team.name}</option>
+				{/each}
+			</select>
+		</div>
+	{/if}
+
 	<div class="tab-buttons">
 		<button
 			type="button"
@@ -1248,7 +1406,7 @@
 				const url = currentId ? `/planning?id=${currentId}#beschikbaar` : '/planning#beschikbaar';
 				goto(url, { replaceState: true, keepfocus: true, noscroll: true });
 				await loadCurrentTabData();
-			}}>Beschikbaar</button
+			}}>{$_('planning.available')}</button
 		>
 		<button
 			type="button"
@@ -1260,7 +1418,7 @@
 				const url = currentId ? `/planning?id=${currentId}#mijn-planning` : '/planning#mijn-planning';
 				goto(url, { replaceState: true, keepfocus: true, noscroll: true });
 				await loadCurrentTabData();
-			}}>Mijn planning</button
+			}}>{$_('planning.my_planning')}</button
 		>
 		{#if isAdmin}
 			<button
@@ -1273,13 +1431,13 @@
 					const url = currentId ? `/planning?id=${currentId}#alle-workshops` : '/planning#alle-workshops';
 					goto(url, { replaceState: true, keepfocus: true, noscroll: true });
 					await loadCurrentTabData();
-				}}>Alle workshops</button
+				}}>{$_('planning.all_workshops')}</button
 			>
 		{/if}
 	</div>
 	{#if isAdmin}
 		<button type="button" class="add-workshop-btn" on:click={openCreateModal}
-			>+ Workshop</button
+			>+ {$_('planning.workshop')}</button
 		>
 	{/if}
 </div>
@@ -1337,6 +1495,7 @@
 			{schoolOptions}
 			{teacherOptions}
 			{statusOptions}
+			{teamOptions}
 			isEdit={true}
 			initialValues={{
 				school: selectedSchool ? String(selectedSchool.value) : '',
@@ -1349,7 +1508,8 @@
 				sessions: eventSessions,
 				totalDuration: editEvent?.totalDuration || 0,
 				eventType: eventType,
-				title: title
+				title: title,
+				assignedTeams: editEvent?.assignedTeams ? JSON.parse(editEvent.assignedTeams) : []
 			}}
 			bind:selectedSchool
 			bind:selectedTeacher
@@ -1374,6 +1534,7 @@
 			{schoolOptions}
 			{teacherOptions}
 			{statusOptions}
+			{teamOptions}
 			isEdit={false}
 			initialValues={{}}
 			bind:selectedSchool
@@ -1411,7 +1572,7 @@
 	<div class="modal-backdrop" on:click={closeIcalModal}></div>
 	<div class="modal ical-modal" on:click|stopPropagation>
 		<div class="modal-header">
-			<h2>📅 Kalender Synchronisatie</h2>
+			<h2>📅 {$_('planning.calendar_sync')}</h2>
 			<button class="close-btn" on:click={closeIcalModal}>
 				<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
 					<line x1="18" y1="6" x2="6" y2="18"/>
@@ -1421,10 +1582,10 @@
 		</div>
 		
 		<div class="ical-content">
-			<p>Voeg de planning toe aan je eigen kalender app:</p>
+			<p>{$_('planning.add_to_calendar_app')}</p>
 			
 			<div class="ical-url-container">
-				<label for="ical-url">Alle Workshops (iCal Feed):</label>
+				<label for="ical-url">{$_('planning.all_workshops_ical')}:</label>
 				<div class="url-input-group">
 					<input 
 						id="ical-url"
@@ -1437,21 +1598,21 @@
 						class="copy-btn"
 						on:click={() => {
 							navigator.clipboard.writeText(`${window.location.origin}/planning.ics`);
-							alert('URL gekopieerd naar klembord!');
+							alert($_('planning.url_copied_clipboard'));
 						}}
 					>
-						Kopieer
+						{$_('planning.copy')}
 					</button>
 				</div>
 			</div>
 			
 			{#if currentUserId}
 				<div class="personal-feeds-section">
-					<h3>Persoonlijke Kalender Feeds</h3>
-					<p>Gepersonaliseerde kalender feeds gebaseerd op je eigen planning:</p>
+					<h3>{$_('planning.personal_calendar_feeds')}</h3>
+					<p>{$_('planning.personalized_feeds_description')}</p>
 					
 					<div class="ical-url-container">
-						<label for="beschikbaar-url">Beschikbare Workshops:</label>
+						<label for="beschikbaar-url">{$_('planning.available_workshops')}:</label>
 						<div class="url-input-group">
 							<input 
 								id="beschikbaar-url"
@@ -1464,16 +1625,16 @@
 								class="copy-btn"
 								on:click={() => {
 									navigator.clipboard.writeText(`${window.location.origin}/beschikbaar/${currentUserId}.ics`);
-									alert('Beschikbare workshops URL gekopieerd naar klembord!');
+									alert($_('planning.available_url_copied'));
 								}}
 							>
-								Kopieer
+								{$_('planning.copy')}
 							</button>
 						</div>
 					</div>
 					
 					<div class="ical-url-container">
-						<label for="mijn-planning-url">Mijn Planning:</label>
+						<label for="mijn-planning-url">{$_('planning.my_planning')}:</label>
 						<div class="url-input-group">
 							<input 
 								id="mijn-planning-url"
@@ -1486,10 +1647,10 @@
 								class="copy-btn"
 								on:click={() => {
 									navigator.clipboard.writeText(`${window.location.origin}/mijn-planning/${currentUserId}.ics`);
-									alert('Mijn planning URL gekopieerd naar klembord!');
+									alert($_('planning.my_planning_url_copied'));
 								}}
 							>
-								Kopieer
+								{$_('planning.copy')}
 							</button>
 						</div>
 					</div>
@@ -1497,35 +1658,35 @@
 			{/if}
 			
 			<div class="instructions">
-				<h3>Instructies per kalender app:</h3>
+				<h3>{$_('planning.instructions_per_calendar_app')}</h3>
 				
 				<div class="instruction-item">
-					<h4>📱 iPhone/iPad (Kalender app)</h4>
+					<h4>📱 {$_('planning.iphone_ipad_calendar')}</h4>
 					<ol>
-						<li>Open de Kalender app</li>
-						<li>Ga naar Instellingen → Kalenders → Account toevoegen</li>
-						<li>Kies "Andere" → "Agenda toevoegen"</li>
-						<li>Plak de URL hierboven</li>
+						<li>{$_('planning.open_calendar_app')}</li>
+						<li>{$_('planning.go_to_settings_calendars_add_account')}</li>
+						<li>{$_('planning.choose_other_add_calendar')}</li>
+						<li>{$_('planning.paste_url_above')}</li>
 					</ol>
 				</div>
 				
 				<div class="instruction-item">
 					<h4>📧 Outlook</h4>
 					<ol>
-						<li>Open Outlook</li>
-						<li>Ga naar Kalender → "Kalender toevoegen"</li>
-						<li>Kies "Van internet"</li>
-						<li>Plak de URL hierboven</li>
+						<li>{$_('planning.open_outlook')}</li>
+						<li>{$_('planning.go_to_calendar_add_calendar')}</li>
+						<li>{$_('planning.choose_from_internet')}</li>
+						<li>{$_('planning.paste_url_above')}</li>
 					</ol>
 				</div>
 				
 				<div class="instruction-item">
 					<h4>🌐 Google Calendar</h4>
 					<ol>
-						<li>Open Google Calendar</li>
-						<li>Klik op "+" naast "Andere agenda's"</li>
-						<li>Kies "Van URL"</li>
-						<li>Plak de URL hierboven</li>
+						<li>{$_('planning.open_google_calendar')}</li>
+						<li>{$_('planning.click_plus_other_calendars')}</li>
+						<li>{$_('planning.choose_from_url')}</li>
+						<li>{$_('planning.paste_url_above')}</li>
 					</ol>
 				</div>
 			</div>
@@ -1676,6 +1837,33 @@
 		margin-bottom: 1rem;
 		gap: 1rem;
 		flex-wrap: wrap;
+	}
+	
+	.team-selector {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+	}
+	
+	.team-selector label {
+		font-weight: 600;
+		color: var(--foreground);
+		white-space: nowrap;
+	}
+	
+	.team-selector select {
+		background: var(--background);
+		color: var(--foreground);
+		border: 1px solid var(--border);
+		border-radius: var(--radius);
+		padding: 0.5rem;
+		font-size: 0.9rem;
+		min-width: 200px;
+	}
+	
+	.team-selector select:focus {
+		outline: none;
+		border-color: var(--accent);
 	}
 	
 	.tab-buttons {

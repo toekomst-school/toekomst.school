@@ -1,13 +1,11 @@
 <script lang="ts" module>
-	// Only the requested menu items with correct URLs
-	const data = {
-		navMain: [
-			{ title: 'Planning', url: '/planning', icon: 'calendar' },
-			{ title: 'Connect', url: '/connect', icon: 'presentation' },
-			{ title: 'Lessen', url: '/cursussen', icon: 'bookOpen' },
-			{ title: 'Game', url: '/game', icon: 'gamepad' }
-		]
-	};
+	// Static navigation menu items - translations will be applied in instance script
+	const navItems = [
+		{ titleKey: 'nav.planning', url: '/planning', icon: 'calendar' },
+		{ titleKey: 'nav.connect', url: '/connect', icon: 'presentation' },
+		{ titleKey: 'nav.lessons', url: '/cursussen', icon: 'bookOpen' },
+		{ titleKey: 'nav.game', url: '/game', icon: 'gamepad' }
+	];
 </script>
 
 <script lang="ts">
@@ -23,6 +21,8 @@
 	import { writable } from 'svelte/store';
 	import { goto } from '$app/navigation';
 	import { user } from '$lib/stores/auth.js';
+	import { _ } from 'svelte-i18n';
+	import { notificationCounts, announcementActions } from '$lib/stores/announcements';
 	import {
 		Sheet,
 		SheetContent,
@@ -35,6 +35,15 @@
 	let { ref = $bindable(null), ...restProps }: ComponentProps<typeof Sidebar.Root> = $props();
 	
 	const sidebar = Sidebar.useSidebar();
+	
+	// Create reactive navigation data with translations
+	let data = $derived({
+		navMain: navItems.map(item => ({
+			title: $_(item.titleKey),
+			url: item.url,
+			icon: item.icon
+		}))
+	});
 
 	const themeStore = writable('dark');
 	let theme = $state('dark');
@@ -82,6 +91,11 @@
 		// Check admin status
 		if ($user?.labels?.includes('admin')) {
 			isAdmin = true;
+		}
+		
+		// Load announcement notifications for admin users
+		if ($user?.labels?.includes('admin') || $user?.labels?.includes('planning')) {
+			announcementActions.fetchAnnouncements({}, true);
 		}
 		
 		// Add click outside listener to close menus
@@ -280,7 +294,7 @@
 
 <Sidebar.Root variant="floating" {...restProps}>
 	<Sidebar.Header>
-		<div class="flex items-center justify-center py-6">
+		<div class="flex items-center justify-center py-6 relative">
 			<img 
 				src="/toekomst_logo.svg" 
 				alt="Toekomst Logo" 
@@ -291,6 +305,11 @@
 				tabindex="0"
 				aria-label="Ga naar dashboard"
 			/>
+			{#if $notificationCounts.total > 0}
+				<div class="absolute -top-1 -right-1 w-3 h-3 rounded-full animate-pulse
+					{$notificationCounts.hasUrgent ? 'bg-orange-500' : 'bg-teal-500'}">
+				</div>
+			{/if}
 		</div>
 	</Sidebar.Header>
 	<Sidebar.Content>
@@ -337,20 +356,20 @@
 				<div class="space-y-2">
 					{#if $user}
 						<div class="border-b border-border pb-2 text-sm font-medium text-foreground">
-							{$user.name || $user.email || 'Gebruiker'}
+							{$user.name || $user.email || $_('user.profile')}
 						</div>
 					{:else}
 						<div class="border-b border-border pb-2 text-sm font-medium text-foreground">
-							Gebruiker
+							{$_('user.profile')}
 						</div>
 					{/if}
 					<a 
-						href="/profile" 
+						href={$user ? `/profile/${$user.$id}` : '/profile'} 
 						class="flex items-center gap-2 rounded px-3 py-2 text-sm text-foreground hover:bg-muted transition-colors"
 						on:click={() => { closeUserMenu(); handleMenuClick(); }}
 					>
 						<UserIcon size="16" />
-						Mijn Profiel
+						{$_('user.profile')}
 					</a>
 					{#if $user?.labels?.includes('teacher') || $user?.labels?.includes('vakdocent')}
 						<a 
@@ -359,7 +378,7 @@
 							on:click={() => { closeUserMenu(); handleMenuClick(); }}
 						>
 							<Users size={16} />
-							Team
+							{$_('nav.team')}
 						</a>
 						<a 
 							href="/scholen" 
@@ -367,7 +386,7 @@
 							on:click={() => { closeUserMenu(); handleMenuClick(); }}
 						>
 							<GraduationCap size={16} />
-							Scholen
+							{$_('nav.schools')}
 						</a>
 					{/if}
 				</div>
@@ -378,15 +397,15 @@
 			<div class="user-menu-section border-sidebar-border border-t p-3">
 				<div class="space-y-2">
 					<div class="border-b border-border pb-2 text-sm font-medium text-foreground">
-						Instellingen
+						{$_('app.settings')}
 					</div>
 					<a 
-						href="/settings" 
+						href="/instellingen" 
 						class="flex items-center gap-2 rounded px-3 py-2 text-sm text-foreground hover:bg-muted transition-colors"
-						on:click={() => handleSettingsNavClick('/settings')}
+						on:click={() => handleSettingsNavClick('/instellingen')}
 					>
 						<Settings size={16} />
-						Mijn instellingen
+						{$_('user.settings')}
 					</a>
 					{#if isAdmin}
 						<a 
@@ -395,22 +414,28 @@
 							on:click={() => handleSettingsNavClick('/admin/settings')}
 						>
 							<Settings size={16} />
-							Admin instellingen
+							Admin {$_('user.settings')}
 						</a>
 						<a 
 							href="/admin/mededelingen" 
-							class="flex items-center gap-2 rounded px-3 py-2 text-sm text-foreground hover:bg-muted transition-colors"
+							class="flex items-center gap-2 rounded px-3 py-2 text-sm text-foreground hover:bg-muted transition-colors relative"
 							on:click={() => handleSettingsNavClick('/admin/mededelingen')}
 						>
 							<MessageSquare size={16} />
-							Mededelingen
+							<span class="flex-1">Mededelingen</span>
+							{#if $notificationCounts.total > 0}
+								<div class="flex items-center justify-center w-5 h-5 rounded-full text-xs font-bold text-white
+									{$notificationCounts.hasUrgent ? 'bg-orange-500' : 'bg-teal-500'}">
+									{$notificationCounts.total > 99 ? '99+' : $notificationCounts.total}
+								</div>
+							{/if}
 						</a>
 					{/if}
 					{#if (isInstallable || isInstalled) && !isInstalled}
 						<Dialog.Root>
 							<Dialog.Trigger class="flex items-center gap-2 rounded px-3 py-2 text-sm text-foreground hover:bg-muted transition-colors w-full" on:click={(e) => { e.stopPropagation(); console.log('Dialog trigger clicked!'); }}>
 								<GalleryVerticalEndIcon size={16} />
-								{installButtonText}
+								{$_('app.install')}
 							</Dialog.Trigger>
 							<Dialog.Content class="bg-[var(--background)] text-foreground border border-border" showCloseButton={false}>
 								{@const instructions = getInstallInstructions()}
@@ -455,7 +480,7 @@
 		
 		<div class="border-sidebar-border user-menu-container flex items-center justify-around gap-2 border-t pt-2">
 			<div
-				aria-label="Toggle theme"
+				aria-label={$_('app.theme')}
 				on:click={toggleTheme}
 				on:keydown={(e) => e.key === 'Enter' && toggleTheme()}
 				role="button"
@@ -469,7 +494,7 @@
 				{/if}
 			</div>
 			<div
-				aria-label="Settings"
+				aria-label={$_('app.settings')}
 				on:click={toggleSettingsMenu}
 				on:keydown={(e) => e.key === 'Enter' && toggleSettingsMenu()}
 				role="button"
@@ -479,7 +504,7 @@
 				<SettingsIcon />
 			</div>
 			<div
-				aria-label="Account"
+				aria-label={$_('user.profile')}
 				on:click={toggleUserMenu}
 				on:keydown={(e) => e.key === 'Enter' && toggleUserMenu()}
 				role="button"

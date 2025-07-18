@@ -6,6 +6,7 @@
 	import Select from 'svelte-select';
 	import { user } from '$lib/stores/auth.js';
 	import { createSocketManager, type SocketManager } from '$lib/stores/socketManager.js';
+	import { _ } from 'svelte-i18n';
 
 	let sessionCode = '';
 	let isConnected = false;
@@ -141,7 +142,7 @@
 			currentSlideNotes = slideNotes[currentSlide] || '';
 		} catch (error) {
 			console.error('Error loading lesson:', error);
-			connectionError = 'Kon les niet laden';
+			connectionError = $_('connect.lesson_load_error');
 		}
 	}
 
@@ -167,18 +168,18 @@
 			}
 		} catch (error) {
 			console.error('Error loading workshop:', error);
-			connectionError = 'Kon workshop niet laden';
+			connectionError = $_('connect.workshop_load_error');
 		}
 	}
 
 	async function loadSchoolData(schoolId: string) {
 		try {
 			const school = await databases.getDocument('scholen', 'school', schoolId);
-			workshopData.schoolName = school.name || school.NAAM || 'Onbekende school';
+			workshopData.schoolName = school.name || school.NAAM || $_('connect.unknown_school');
 			console.log('🏫 Loaded school data:', { id: schoolId, name: workshopData.schoolName });
 		} catch (schoolError) {
 			console.error('Error loading school data:', schoolError);
-			workshopData.schoolName = 'Onbekende school';
+			workshopData.schoolName = $_('connect.unknown_school');
 		}
 	}
 
@@ -188,12 +189,12 @@
 			const response = await databases.listDocuments('lessen', 'les');
 			availableLessons = response.documents.map(lesson => ({
 				value: lesson.$id,
-				label: `${lesson.lesnummer || 'Les'} - ${lesson.onderwerp || 'Geen titel'}`,
+				label: `${lesson.lesnummer || $_('connect.lesson')} - ${lesson.onderwerp || $_('connect.no_title')}`,
 				lesson: lesson
 			}));
 		} catch (error) {
 			console.error('Error loading lessons:', error);
-			connectionError = 'Kon lessen niet laden';
+			connectionError = $_('connect.lessons_load_error');
 		} finally {
 			loadingLessons = false;
 		}
@@ -256,11 +257,11 @@
 				if (workshopData.school) {
 					try {
 						const school = await databases.getDocument('scholen', 'school', workshopData.school);
-						workshopData.schoolName = school.name || school.NAAM || 'Onbekende school';
+						workshopData.schoolName = school.name || school.NAAM || $_('connect.unknown_school');
 						console.log('🏫 Auto-loaded school data:', { id: workshopData.school, name: workshopData.schoolName });
 					} catch (schoolError) {
 						console.error('Error auto-loading school data:', schoolError);
-						workshopData.schoolName = 'Onbekende school';
+						workshopData.schoolName = $_('connect.unknown_school');
 					}
 				}
 				
@@ -300,7 +301,7 @@
 
 	async function connectToSession() {
 		if (!sessionCode.trim()) {
-			connectionError = 'Voer een sessiecode in';
+			connectionError = $_('connect.enter_session_code');
 			return;
 		}
 
@@ -360,7 +361,7 @@
 						// If we have slides but no workshop data, create lesson data for display
 						if (!state.workshopData && state.slides) {
 							lessonData = {
-								onderwerp: 'Actieve presentatie',
+								onderwerp: $_('connect.active_presentation'),
 								slides: state.slides
 							};
 						}
@@ -419,7 +420,7 @@
 
 		} catch (error) {
 			isConnecting = false;
-			connectionError = error.message || 'Kan geen verbinding maken';
+			connectionError = error.message || $_('connect.connection_error');
 		}
 	}
 
@@ -522,9 +523,9 @@
 
 	{#if !isConnected}
 		<div class="bg-card rounded-lg border p-6 mb-6">
-			<h2 class="text-xl font-semibold mb-4">Verbinden met presentatie</h2>
+			<h2 class="text-xl font-semibold mb-4">{$_('connect.connect_to_presentation')}</h2>
 			<div class="mb-4 p-3 bg-muted border border-border rounded-md">
-				<p class="text-foreground text-sm">📺 Ga op het digibord naar <code class="bg-background px-1 py-0.5 rounded text-xs font-mono font-bold">toekomst.school/present</code> om de presentatie te starten.</p>
+				<p class="text-foreground text-sm">📺 {$_('connect.go_to_present_instructions')}</p>
 			</div>
 			
 					
@@ -559,7 +560,7 @@
 			{/if}
 			
 			<div class="mb-4">
-				<label for="sessionCode" class="block text-sm font-medium mb-2">Sessiecode:</label>
+				<label for="sessionCode" class="block text-sm font-medium mb-2">{$_('connect.session_code')}:</label>
 				<input
 					id="sessionCode"
 					type="text"
@@ -570,7 +571,7 @@
 							connectToSession();
 						}
 					}}
-					placeholder="Voer 4-cijferige code in"
+					placeholder={$_('connect.enter_4_digit_code')}
 					maxlength="4"
 					disabled={isConnecting}
 					style="text-transform: uppercase;"
@@ -590,9 +591,9 @@
 				disabled={isConnecting || !sessionCode.trim()}
 			>
 				{#if isConnecting}
-					Verbinden...
+					{$_('connect.connecting')}
 				{:else}
-					Verbinden
+					{$_('connect.connect')}
 				{/if}
 			</button>
 		</div>
@@ -611,7 +612,7 @@
 				on:keydown={(e) => e.key === 'Enter' && disconnect()}
 				role="button"
 				tabindex="0"
-				aria-label="Verbreek verbinding"
+				aria-label={$_('connect.disconnect')}
 			>
 				<svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
 					<path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
@@ -623,16 +624,16 @@
 
 			{#if showLessonSelection && !lessonData && !workshopData}
 				<div class="bg-card rounded-lg border p-4 mb-4">
-					<h3 class="text-lg font-medium mb-3">Kies een les voor deze presentatie</h3>
+					<h3 class="text-lg font-medium mb-3">{$_('connect.choose_lesson')}</h3>
 					
 					
 					<div class="mb-4">
-						<label for="lesson-select" class="block text-sm font-medium mb-2">Selecteer les:</label>
+						<label for="lesson-select" class="block text-sm font-medium mb-2">{$_('connect.select_lesson')}:</label>
 						<Select
 							id="lesson-select"
 							items={availableLessons}
 							value={selectedLesson}
-							placeholder="Zoek en selecteer een les..."
+							placeholder={$_('connect.search_select_lesson')}
 							on:select={onLessonSelect}
 							on:clear={() => selectedLesson = null}
 							isLoading={loadingLessons}
@@ -672,7 +673,7 @@
 							class="bg-muted hover:bg-muted/80 text-foreground px-3 py-1 rounded-md text-xs font-medium transition-colors"
 							on:click={clearLessonSelection}
 						>
-							Wijzig
+							{$_('connect.change')}
 						</button>
 					</div>
 				</div>
@@ -686,7 +687,7 @@
 							class="bg-muted hover:bg-muted/80 text-foreground px-3 py-1 rounded-md text-xs font-medium transition-colors"
 							on:click={clearLessonSelection}
 						>
-							Wijzig
+							{$_('connect.change')}
 						</button>
 					</div>
 				</div>
@@ -702,7 +703,7 @@
 				<!-- Floating slide counter -->
 				<div class="floating-slide-counter">
 					<span class="inline-block bg-primary text-primary-foreground px-3 py-1 rounded-full text-sm font-medium">
-						Slide {currentSlide + 1} / {totalSlides}
+						{$_('connect.slide')} {currentSlide + 1} / {totalSlides}
 					</span>
 				</div>
 				
@@ -721,7 +722,7 @@
 							<svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
 								<polygon points="15,18 9,12 15,6" />
 							</svg>
-							Vorige
+							{$_('connect.previous')}
 						</button>
 
 						<button 
@@ -736,7 +737,7 @@
 							<svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
 								<polygon points="9,18 15,12 9,6" />
 							</svg>
-							Volgende
+							{$_('connect.next')}
 						</button>
 					</div>
 				{/if}

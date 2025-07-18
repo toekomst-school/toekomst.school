@@ -19,7 +19,7 @@ export const POST: RequestHandler = async ({ request }) => {
 		}
 
 		// Validate label is one of the allowed roles
-		const allowedLabels = ['teacher', 'student', 'vakdocent'];
+		const allowedLabels = ['teacher', 'student', 'vakdocent', 'admin'];
 		if (!allowedLabels.includes(label)) {
 			return json({ success: false, error: 'Invalid label' }, { status: 400 });
 		}

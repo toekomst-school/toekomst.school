@@ -7,6 +7,11 @@
 	import { page } from '$app/stores';
 	import { goto } from '$app/navigation';
 	import { onMount } from 'svelte';
+	
+	// Initialize i18n
+	import '$lib/i18n';
+	import { _, locale, waitLocale } from 'svelte-i18n';
+	import { initializeLocale } from '$lib/i18n/utils';
 	import {
 		Sheet,
 		SheetContent,
@@ -22,12 +27,25 @@
 	
 	// Initialize auth store
 	onMount(async () => {
+		// Set dark mode as default
+		document.documentElement.classList.add('dark');
+		
+		// Initialize user and locale
 		if (data.user) {
 			user.set(data.user);
+			initializeLocale(data.user);
 			isLoading.set(false);
 		} else {
 			await initAuth();
+			// Initialize locale with user data after auth
+			const currentUser = $user;
+			if (currentUser) {
+				initializeLocale(currentUser);
+			}
 		}
+		
+		// Wait for i18n to be ready
+		await waitLocale();
 		
 		// Handle redirect after authentication
 		const redirectUrl = sessionStorage.getItem('redirectAfterAuth');
@@ -66,10 +84,25 @@
 	// Define routes that should not show the sidebar
 	const NO_SIDEBAR_ROUTES = ['/', '/present'];
 	
-	let breadcrumbMain = 'Home';
+	let breadcrumbMain = '';
 	let breadcrumbSecond = '';
 	let breadcrumbPage = '';
 	let breadcrumbSecondHref = '';
+	
+	// Initialize breadcrumb main with translation (only when locale is ready)
+	$: {
+		try {
+			breadcrumbMain = $locale ? $_('nav.home') : 'Home';
+		} catch (error) {
+			console.warn('i18n not ready yet:', error);
+			breadcrumbMain = 'Home';
+		}
+	}
+	
+	// Update document language when locale changes
+	$: if (typeof document !== 'undefined') {
+		document.documentElement.lang = $locale || 'nl';
+	}
 
 	let showRoleModal = false;
 	let selectedRole = '';
@@ -99,53 +132,53 @@
 	}
 	$: if (typeof currentPath === 'string' && currentPath.length > 0) {
 		if (currentPath.startsWith('/lessen')) {
-			breadcrumbSecond = 'Lessen';
+			breadcrumbSecond = $_('nav.lessons');
 			breadcrumbSecondHref = '/lessen';
 			if (currentPath === '/lessen') {
 				breadcrumbPage = '';
 			} else if (currentPath === '/lessen/nieuw') {
-				breadcrumbPage = 'Nieuwe Les';
+				breadcrumbPage = $_('pages.new_lesson');
 			} else if (/^\/lessen\/nieuw\/.+/.test(currentPath)) {
-				breadcrumbPage = 'Les Bewerken';
+				breadcrumbPage = $_('pages.lesson_editing');
 			} else if (/^\/lessen\/[a-zA-Z0-9_-]+$/.test(currentPath)) {
-				breadcrumbPage = 'Les Details';
+				breadcrumbPage = $_('pages.lesson_details');
 			}
 		} else if (currentPath.startsWith('/cursussen')) {
-			breadcrumbSecond = 'Cursussen';
+			breadcrumbSecond = $_('nav.courses');
 			breadcrumbSecondHref = '/cursussen';
 			if (currentPath === '/cursussen') {
 				breadcrumbPage = '';
 			} else if (/^\/cursussen\/[a-zA-Z0-9_-]+$/.test(currentPath)) {
-				breadcrumbPage = 'Cursus Details';
+				breadcrumbPage = $_('pages.course_details');
 			}
 		} else if (currentPath.startsWith('/scholen')) {
-			breadcrumbSecond = 'Scholen';
+			breadcrumbSecond = $_('nav.schools');
 			breadcrumbSecondHref = '/scholen';
 			if (currentPath === '/scholen') {
 				breadcrumbPage = '';
 			} else if (/^\/scholen\/[a-zA-Z0-9_-]+\/bewerken$/.test(currentPath)) {
-				breadcrumbPage = 'School Bewerken';
+				breadcrumbPage = $_('pages.school_editing');
 			} else if (/^\/scholen\/[a-zA-Z0-9_-]+(\/)?$/.test(currentPath)) {
-				breadcrumbPage = 'School Details';
+				breadcrumbPage = $_('pages.school_details');
 			}
 		} else if (currentPath.startsWith('/team')) {
-			breadcrumbSecond = 'Team';
+			breadcrumbSecond = $_('nav.team');
 			breadcrumbSecondHref = '/team';
 			if (currentPath === '/team') {
 				breadcrumbPage = '';
 			} else if (/^\/team\/[a-zA-Z0-9_-]+(\/)?$/.test(currentPath)) {
-				breadcrumbPage = 'Team Details';
+				breadcrumbPage = $_('pages.team_details');
 			}
 		} else if (currentPath.startsWith('/planning')) {
-			breadcrumbSecond = 'Planning';
+			breadcrumbSecond = $_('nav.planning');
 			breadcrumbSecondHref = '/planning';
 			if (currentPath === '/planning') {
 				breadcrumbPage = '';
 			} else if (currentPath === '/planning/beschikbaar') {
-				breadcrumbPage = 'Beschikbaar';
+				breadcrumbPage = $_('pages.available');
 			}
 		} else if (currentPath.startsWith('/dashboard')) {
-			breadcrumbSecond = 'Dashboard';
+			breadcrumbSecond = $_('nav.dashboard');
 			breadcrumbSecondHref = '/dashboard';
 			breadcrumbPage = '';
 		} else if (currentPath.startsWith('/remote')) {
@@ -157,20 +190,20 @@
 			breadcrumbSecondHref = '/tabcontrol';
 			breadcrumbPage = '';
 		} else if (currentPath.startsWith('/game')) {
-			breadcrumbSecond = 'Game';
+			breadcrumbSecond = $_('nav.game');
 			breadcrumbSecondHref = '/game';
 			breadcrumbPage = '';
 		} else if (currentPath.startsWith('/connect')) {
-			breadcrumbSecond = 'Presentatie';
+			breadcrumbSecond = $_('nav.presentation');
 			breadcrumbSecondHref = '/connect';
-			breadcrumbPage = 'Remote Control';
+			breadcrumbPage = $_('nav.remote_control');
 		} else {
-			breadcrumbSecond = 'Overzicht';
+			breadcrumbSecond = $_('nav.overview');
 			breadcrumbSecondHref = '/';
 			breadcrumbPage = '';
 		}
 	} else {
-		breadcrumbMain = 'Home';
+		breadcrumbMain = $_('nav.home');
 		breadcrumbSecond = '';
 		breadcrumbSecondHref = '';
 		breadcrumbPage = '';
@@ -199,10 +232,10 @@
 					labels: [...(currentUser?.labels || []), role]
 				}));
 			} else {
-				alert('Kon rol niet opslaan. Probeer opnieuw.');
+				alert($_('role.role_save_error'));
 			}
 		} catch (e) {
-			alert('Kon rol niet opslaan. Probeer opnieuw.');
+			alert($_('role.role_save_error'));
 			console.error(e);
 		}
 	}
@@ -214,24 +247,24 @@
 		<Sheet open={showRoleModal}>
 			<SheetContent side="top">
 				<SheetHeader>
-					<SheetTitle>Kies je rol</SheetTitle>
+					<SheetTitle>{$_('user.choose_role')}</SheetTitle>
 					<SheetDescription>
-						Ben je een leraar of een leerling? Dit helpt ons de juiste ervaring te bieden.
+						{$_('user.choose_role_description')}
 					</SheetDescription>
 				</SheetHeader>
 				<div class="my-6 flex justify-center gap-4">
 					<Button
 						on:click={() => setRole('teacher')}
-						variant={selectedRole === 'teacher' ? 'secondary' : 'default'}>Leraar</Button
+						variant={selectedRole === 'teacher' ? 'secondary' : 'default'}>{$_('user.teacher')}</Button
 					>
 					<Button
 						on:click={() => setRole('student')}
-						variant={selectedRole === 'student' ? 'secondary' : 'default'}>Leerling</Button
+						variant={selectedRole === 'student' ? 'secondary' : 'default'}>{$_('user.student')}</Button
 					>
 				</div>
 				<SheetFooter>
 					<div class="text-center text-xs text-gray-500">
-						Je kunt dit later aanpassen via je profiel.
+						{$_('role.change_later')}
 					</div>
 				</SheetFooter>
 			</SheetContent>
@@ -284,7 +317,7 @@
 			class="flex h-10 items-center rounded bg-primary px-6 text-primary-foreground shadow-lg transition hover:bg-primary/90"
 			style="line-height:1;"
 		>
-			Login
+			{$_('user.login')}
 		</button>
 	</div>
 	<slot />

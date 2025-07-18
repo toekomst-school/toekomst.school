@@ -1,272 +1,262 @@
-@import 'tailwindcss';
+@import "tailwindcss";
 
-@import 'tw-animate-css';
+@import "tw-animate-css";
 
-/* DatePicker calendar styling with teal colors */
-[data-slot="calendar-day"][data-selected="true"] {
-	background-color: #14b8a6 !important; /* teal-500 */
-	color: white !important;
-	border-radius: 50% !important;
-}
+@custom-variant dark (&:is(.dark *));
 
-[data-slot="calendar-day"]:hover {
-	background-color: #5eead4 !important; /* teal-200 */
-	color: #0f172a !important; /* slate-900 */
-	border-radius: 50% !important;
-}
-
-[data-slot="calendar-day"]:focus-visible {
-	border-color: #14b8a6 !important; /* teal-500 */
-	border-width: 2px !important;
-	outline: 2px solid #14b8a6 !important;
-	border-radius: 50% !important;
-}
-
-/* === 🎨 Color Palette === */
+/* === 🎨 Refined Ruin Color Palette === */
 :root {
-	--color-patina-copper: #6e7c62;
-	--color-ash-grey: #b2b2a2;
-	--color-blackened-steel: #1d1f20;
-	--color-neo-teal: #3ba39b;
-	--color-digital-amber: #ffa94d;
+  /* Base colors from style guide */
+  --color-patina-copper: #6e7c62;
+  --color-ash-grey: #b2b2a2;
+  --color-blackened-steel: #1d1f20;
+  --color-neo-teal: #3ba39b;
+  --color-digital-amber: #ffa94d;
 
-	--background: var(--color-blackened-steel);
-	--foreground: var(--color-ash-grey);
-	--accent: var(--color-neo-teal);
-	--warning: var(--color-digital-amber);
-	--divider: var(--color-patina-copper);
+  --radius: 0.625rem;
+  --background: #f7f7f7;
+  --foreground: var(--color-ash-grey);
+  --card: #ffffff;
+  --card-foreground: var(--color-ash-grey);
+  --popover: #ffffff;
+  --popover-foreground: var(--color-ash-grey);
+  --primary: var(--color-neo-teal);
+  --primary-foreground: #ffffff;
+  --secondary: var(--color-patina-copper);
+  --secondary-foreground: #ffffff;
+  --muted: #f1f1f1;
+  --muted-foreground: var(--color-ash-grey);
+  --accent: var(--color-neo-teal);
+  --accent-foreground: #ffffff;
+  --destructive: #dc2626;
+  --border: var(--color-ash-grey);
+  --input: #f1f1f1;
+  --ring: var(--color-neo-teal);
+  --chart-1: var(--color-neo-teal);
+  --chart-2: var(--color-digital-amber);
+  --chart-3: var(--color-patina-copper);
+  --chart-4: var(--color-ash-grey);
+  --chart-5: var(--color-blackened-steel);
+  --sidebar: #ffffff;
+  --sidebar-foreground: var(--color-ash-grey);
+  --sidebar-primary: var(--color-neo-teal);
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: var(--color-patina-copper);
+  --sidebar-accent-foreground: #ffffff;
+  --sidebar-border: var(--color-ash-grey);
+  --sidebar-ring: var(--color-neo-teal);
 
-	/* Sidebar variables for dark theme */
-	--sidebar-background: var(--color-blackened-steel);
-	--sidebar-foreground: var(--color-ash-grey);
-	--sidebar-border: var(--color-patina-copper);
-	--sidebar-accent: var(--color-patina-copper);
-	--sidebar-accent-foreground: var(--color-ash-grey);
-
-	--radius: 0.625rem;
+  /* Legacy variables for styling */
+  --warning: var(--color-digital-amber);
+  --divider: var(--color-patina-copper);
 }
 
-body {
-	background: var(--background);
-	color: var(--foreground);
-	font-family: 'IBM Plex Mono', 'Space Mono', monospace;
-	line-height: 1.6;
-	letter-spacing: 0.03em;
-	margin: 0;
-	padding: 0;
+.dark {
+  --background: var(--color-blackened-steel);
+  --foreground: #ffffff;
+  --card: var(--color-patina-copper);
+  --card-foreground: #ffffff;
+  --popover: var(--color-patina-copper);
+  --popover-foreground: #ffffff;
+  --primary: var(--color-neo-teal);
+  --primary-foreground: var(--color-blackened-steel);
+  --secondary: var(--color-patina-copper);
+  --secondary-foreground: #ffffff;
+  --muted: var(--color-patina-copper);
+  --muted-foreground: var(--color-ash-grey);
+  --accent: var(--color-neo-teal);
+  --accent-foreground: #ffffff;
+  --destructive: #ef4444;
+  --border: var(--color-patina-copper);
+  --input: var(--color-patina-copper);
+  --ring: var(--color-neo-teal);
+  --chart-1: var(--color-neo-teal);
+  --chart-2: var(--color-digital-amber);
+  --chart-3: var(--color-patina-copper);
+  --chart-4: var(--color-ash-grey);
+  --chart-5: #ffffff;
+  --sidebar: var(--color-blackened-steel);
+  --sidebar-foreground: #ffffff;
+  --sidebar-primary: var(--color-neo-teal);
+  --sidebar-primary-foreground: var(--color-blackened-steel);
+  --sidebar-accent: var(--color-patina-copper);
+  --sidebar-accent-foreground: #ffffff;
+  --sidebar-border: var(--color-patina-copper);
+  --sidebar-ring: var(--color-neo-teal);
 }
 
-h1,
-h2,
-h3,
-h4,
-h5,
-h6,
-nav,
+@theme inline {
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-family: 'IBM Plex Mono', 'Space Mono', monospace;
+    line-height: 1.6;
+    letter-spacing: 0.03em;
+  }
+}
+
+/* === 🔤 Refined Ruin Typography === */
+h1, h2, h3, h4, h5, h6,
+nav, nav a,
 .cta,
-button {
-	font-family: 'Orbitron', 'Bebas Neue', Arial, sans-serif;
-	text-transform: uppercase;
-	letter-spacing: 0.03em;
-}
-
 button,
-.cta {
-	background: var(--accent);
-	color: #fff;
-	border: none;
-	border-radius: var(--radius);
-	padding: 0.75em 2em;
-	font-weight: bold;
-	cursor: pointer;
-	transition: background 0.2s;
+[role="button"] {
+  font-family: 'Orbitron', 'Bebas Neue', Arial, sans-serif;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  font-weight: bold;
 }
+
+/* Button and CTA styling */
+button,
+.cta,
+[role="button"] {
+  background: var(--accent);
+  color: var(--accent-foreground);
+  border: none;
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
 button:hover,
-.cta:hover {
-	background: var(--warning);
-	color: #1d1f20;
+.cta:hover,
+[role="button"]:hover {
+  background: var(--warning);
+  color: var(--color-blackened-steel);
 }
 
+/* Link styling with minimal accent */
 a {
-	color: var(--warning);
-	text-decoration: none;
-	transition: color 0.2s;
+  color: var(--warning);
+  text-decoration: none;
+  transition: color 0.2s;
 }
+
 a:hover {
-	color: var(--accent);
+  color: var(--accent);
 }
 
-/* Nuclear option: Override CSS variables for sidebar in light mode */
-.light [data-sidebar] {
-	--warning: var(--foreground);
-}
-
-/* Alternative approach: Override global a selector for light mode only */
-.light a:not(.keep-orange-color) {
-	color: var(--foreground);
-}
-
-.light a:not(.keep-orange-color):hover {
-	color: var(--accent);
-}
-
-/* Override teal color for sidebar bottom buttons in light mode */
-.light [data-sidebar] .text-teal-500 {
-	color: var(--foreground) !important;
-}
-
-.light [data-sidebar] .text-teal-500:hover {
-	color: var(--accent) !important;
-}
-
+/* Dividers and borders */
 hr,
 .divider {
-	border: none;
-	border-top: 2px solid var(--divider);
-	margin: 2rem 0;
+  border: none;
+  border-top: 2px solid var(--divider);
+  margin: 2rem 0;
 }
 
-/* === 📐 Layout System === */
-.container {
-	max-width: 1200px;
-	margin-left: auto;
-	margin-right: auto;
-	padding-left: 1.5rem;
-	padding-right: 1.5rem;
+/* Utility classes */
+.accent {
+  color: var(--accent);
 }
 
-.grid-12 {
-	display: grid;
-	grid-template-columns: repeat(12, 1fr);
-	gap: 2rem;
-}
-
-@media (max-width: 640px) {
-	.container {
-		padding-left: 1rem;
-		padding-right: 1rem;
-	}
-	.grid-12 {
-		grid-template-columns: 1fr;
-		gap: 1rem;
-	}
-}
-
-@media (min-width: 641px) and (max-width: 1024px) {
-	.container {
-		padding-left: 1.25rem;
-		padding-right: 1.25rem;
-	}
-	.grid-12 {
-		grid-template-columns: repeat(6, 1fr);
-		gap: 1.5rem;
-	}
-}
-
-@media (min-width: 1025px) {
-	.container {
-		padding-left: 2rem;
-		padding-right: 2rem;
-	}
-	.grid-12 {
-		grid-template-columns: repeat(12, 1fr);
-		gap: 2rem;
-	}
-}
-
-/* Utility classes for spacing */
-.mt-2rem {
-	margin-top: 2rem;
-}
-.mb-2rem {
-	margin-bottom: 2rem;
-}
-.p-2rem {
-	padding: 2rem;
+.warning {
+  color: var(--warning);
 }
 
 /* Remove gradients and harsh transitions */
 * {
-	box-shadow: none !important;
+  box-shadow: none !important;
 }
 
-/* Minimal accent usage */
-.accent {
-	color: var(--accent);
-}
-.warning {
-	color: var(--warning);
-}
-
-/* Borders */
-.border {
-	border: 1px solid var(--foreground);
+/* === 🎮 Sidebar Specific Styling === */
+/* Logo styling - no background, invert in light mode */
+.logo-invert-light {
+  background: none !important;
+  filter: invert(1);
 }
 
-/* Divider utility */
-.divider {
-	border-top: 2px solid var(--divider);
-	margin: 2rem 0;
+.dark .logo-invert-light {
+  filter: none;
 }
 
-@layer base {
-	:global(.rangeSlider) {
-		/* Light theme base colors */
-		--slider-accent: var(--accent);
-		--slider-accent-100: var(--warning);
-		--slider-base: #99a2a2;
-		--slider-base-100: #aebecf;
-		--slider-base-200: #b9c2c2;
-		--slider-bg: #d7dada;
-		--slider-fg: #3f3e4f;
-
-		/* Dark theme base colors */
-		--slider-dark-accent: var(--accent);
-		--slider-dark-accent-100: var(--warning);
-		--slider-dark-base: #82809f;
-		--slider-dark-base-100: #595970;
-		--slider-dark-base-200: #454454;
-		--slider-dark-bg: #3f3e4f;
-		--slider-dark-fg: #d7dada;
-
-		/* Component-specific colors with fallbacks */
-		--slider: var(--range-slider, var(--slider-bg));
-		--handle-inactive: var(--range-handle-inactive, var(--slider-base));
-		--handle: var(--range-handle, var(--slider-accent-100));
-		--handle-focus: var(--range-handle-focus, var(--slider-accent));
-		--handle-border: var(--range-handle-border, var(--handle));
-		--range-inactive: var(--range-range-inactive, var(--handle-inactive));
-		--range: var(--range-range, var(--handle-focus));
-		--range-limit: var(--range-range-limit, var(--slider-base-200));
-		--range-hover: var(--range-range-hover, var(--handle-border));
-		--range-press: var(--range-range-press, var(--handle-border));
-		--float-inactive: var(--range-float-inactive, var(--handle-inactive));
-		--float: var(--range-float, var(--handle-focus));
-		--float-text: var(--range-float-text, white);
-	}
+/* Main menu text - black in light mode */
+[data-sidebar] a,
+[data-sidebar] .text-foreground {
+  color: var(--color-blackened-steel) !important;
 }
 
-/* Light theme overrides */
-.light {
-	--background: #f7f7f7;
-	--foreground: #222;
-	--accent: #3ba39b;
-	--warning: #ffa94d;
-	--divider: #b2b2a2;
-	
-	/* Sidebar variables for light theme */
-	--sidebar-background: #ffffff;
-	--sidebar-foreground: #222;
-	--sidebar-border: #e2e8f0;
-	--sidebar-accent: #f1f5f9;
-	--sidebar-accent-foreground: #222;
+.dark [data-sidebar] a,
+.dark [data-sidebar] .text-foreground {
+  color: #ffffff !important;
 }
 
-body.light {
-	background: var(--background);
-	color: var(--foreground);
+/* Bottom menu buttons in sidebar - no background, proper text colors */
+.user-menu-container [role="button"] {
+  background: none !important;
+  color: var(--color-blackened-steel);
+  transition: color 0.2s;
 }
 
-.light .logo-invert-light {
-	filter: invert(1) hue-rotate(180deg) saturate(1.2) contrast(1.1);
+.user-menu-container [role="button"]:hover {
+  background: none !important;
+  color: var(--color-neo-teal);
+}
+
+/* Dark mode colors for bottom menu buttons */
+.dark .user-menu-container [role="button"] {
+  color: var(--color-neo-teal);
+}
+
+.dark .user-menu-container [role="button"]:hover {
+  color: var(--color-digital-amber);
+}
+
+/* Override any hardcoded teal colors in sidebar */
+.text-teal-500,
+.text-teal-600 {
+  color: var(--color-blackened-steel) !important;
+}
+
+.dark .text-teal-500,
+.dark .text-teal-600 {
+  color: var(--color-neo-teal) !important;
+}
+
+.hover\:text-teal-600:hover {
+  color: var(--color-neo-teal) !important;
+}
+
+.dark .hover\:text-teal-600:hover {
+  color: var(--color-digital-amber) !important;
 }

@@ -1,0 +1,333 @@
+@import 'tailwindcss';
+
+@import 'tw-animate-css';
+
+/* DatePicker calendar styling with teal colors */
+[data-slot="calendar-day"][data-selected="true"] {
+	background-color: #14b8a6 !important; /* teal-500 */
+	color: white !important;
+	border-radius: 50% !important;
+}
+
+[data-slot="calendar-day"]:hover {
+	background-color: #5eead4 !important; /* teal-200 */
+	color: #0f172a !important; /* slate-900 */
+	border-radius: 50% !important;
+}
+
+[data-slot="calendar-day"]:focus-visible {
+	border-color: #14b8a6 !important; /* teal-500 */
+	border-width: 2px !important;
+	outline: 2px solid #14b8a6 !important;
+	border-radius: 50% !important;
+}
+
+/* === 🎨 Color Palette === */
+:root {
+	--radius: 0.625rem;
+	--background: oklch(1 0 0);
+	--foreground: oklch(0.145 0 0);
+	--card: oklch(1 0 0);
+	--card-foreground: oklch(0.145 0 0);
+	--popover: oklch(1 0 0);
+	--popover-foreground: oklch(0.145 0 0);
+	--primary: oklch(0.205 0 0);
+	--primary-foreground: oklch(0.985 0 0);
+	--secondary: oklch(0.97 0 0);
+	--secondary-foreground: oklch(0.205 0 0);
+	--muted: oklch(0.97 0 0);
+	--muted-foreground: oklch(0.556 0 0);
+	--accent: oklch(0.97 0 0);
+	--accent-foreground: oklch(0.205 0 0);
+	--destructive: oklch(0.577 0.245 27.325);
+	--border: oklch(0.922 0 0);
+	--input: oklch(0.922 0 0);
+	--ring: oklch(0.708 0 0);
+	--chart-1: oklch(0.646 0.222 41.116);
+	--chart-2: oklch(0.6 0.118 184.704);
+	--chart-3: oklch(0.398 0.07 227.392);
+	--chart-4: oklch(0.828 0.189 84.429);
+	--chart-5: oklch(0.769 0.188 70.08);
+	--sidebar: oklch(0.985 0 0);
+	--sidebar-foreground: oklch(0.145 0 0);
+	--sidebar-primary: oklch(0.205 0 0);
+	--sidebar-primary-foreground: oklch(0.985 0 0);
+	--sidebar-accent: oklch(0.97 0 0);
+	--sidebar-accent-foreground: oklch(0.205 0 0);
+	--sidebar-border: oklch(0.922 0 0);
+	--sidebar-ring: oklch(0.708 0 0);
+
+	/* Legacy variables for backward compatibility */
+	--color-patina-copper: #6e7c62;
+	--color-ash-grey: #b2b2a2;
+	--color-blackened-steel: #1d1f20;
+	--color-neo-teal: #3ba39b;
+	--color-digital-amber: #ffa94d;
+	--warning: var(--color-digital-amber);
+	--divider: var(--color-patina-copper);
+
+	/* Sidebar variables for dark theme */
+	--sidebar-background: var(--color-blackened-steel);
+}
+
+body {
+	background: var(--background);
+	color: var(--foreground);
+	font-family: 'IBM Plex Mono', 'Space Mono', monospace;
+	line-height: 1.6;
+	letter-spacing: 0.03em;
+	margin: 0;
+	padding: 0;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+nav,
+.cta,
+button {
+	font-family: 'Orbitron', 'Bebas Neue', Arial, sans-serif;
+	text-transform: uppercase;
+	letter-spacing: 0.03em;
+}
+
+button,
+.cta {
+	background: var(--accent);
+	color: #fff;
+	border: none;
+	border-radius: var(--radius);
+	padding: 0.75em 2em;
+	font-weight: bold;
+	cursor: pointer;
+	transition: background 0.2s;
+}
+button:hover,
+.cta:hover {
+	background: var(--warning);
+	color: #1d1f20;
+}
+
+a {
+	color: var(--warning);
+	text-decoration: none;
+	transition: color 0.2s;
+}
+a:hover {
+	color: var(--accent);
+}
+
+/* Nuclear option: Override CSS variables for sidebar in light mode */
+.light [data-sidebar] {
+	--warning: var(--foreground);
+}
+
+/* Alternative approach: Override global a selector for light mode only */
+.light a:not(.keep-orange-color) {
+	color: var(--foreground);
+}
+
+.light a:not(.keep-orange-color):hover {
+	color: var(--accent);
+}
+
+/* Override teal color for sidebar bottom buttons in light mode */
+.light [data-sidebar] .text-teal-500 {
+	color: var(--foreground) !important;
+}
+
+.light [data-sidebar] .text-teal-500:hover {
+	color: var(--accent) !important;
+}
+
+hr,
+.divider {
+	border: none;
+	border-top: 2px solid var(--divider);
+	margin: 2rem 0;
+}
+
+/* === 📐 Layout System === */
+.container {
+	max-width: 1200px;
+	margin-left: auto;
+	margin-right: auto;
+	padding-left: 1.5rem;
+	padding-right: 1.5rem;
+}
+
+.grid-12 {
+	display: grid;
+	grid-template-columns: repeat(12, 1fr);
+	gap: 2rem;
+}
+
+@media (max-width: 640px) {
+	.container {
+		padding-left: 1rem;
+		padding-right: 1rem;
+	}
+	.grid-12 {
+		grid-template-columns: 1fr;
+		gap: 1rem;
+	}
+}
+
+@media (min-width: 641px) and (max-width: 1024px) {
+	.container {
+		padding-left: 1.25rem;
+		padding-right: 1.25rem;
+	}
+	.grid-12 {
+		grid-template-columns: repeat(6, 1fr);
+		gap: 1.5rem;
+	}
+}
+
+@media (min-width: 1025px) {
+	.container {
+		padding-left: 2rem;
+		padding-right: 2rem;
+	}
+	.grid-12 {
+		grid-template-columns: repeat(12, 1fr);
+		gap: 2rem;
+	}
+}
+
+/* Utility classes for spacing */
+.mt-2rem {
+	margin-top: 2rem;
+}
+.mb-2rem {
+	margin-bottom: 2rem;
+}
+.p-2rem {
+	padding: 2rem;
+}
+
+/* Remove gradients and harsh transitions */
+* {
+	box-shadow: none !important;
+}
+
+/* Minimal accent usage */
+.accent {
+	color: var(--accent);
+}
+.warning {
+	color: var(--warning);
+}
+
+/* Borders */
+.border {
+	border: 1px solid var(--foreground);
+}
+
+/* Divider utility */
+.divider {
+	border-top: 2px solid var(--divider);
+	margin: 2rem 0;
+}
+
+@layer base {
+	:global(.rangeSlider) {
+		/* Light theme base colors */
+		--slider-accent: var(--accent);
+		--slider-accent-100: var(--warning);
+		--slider-base: #99a2a2;
+		--slider-base-100: #aebecf;
+		--slider-base-200: #b9c2c2;
+		--slider-bg: #d7dada;
+		--slider-fg: #3f3e4f;
+
+		/* Dark theme base colors */
+		--slider-dark-accent: var(--accent);
+		--slider-dark-accent-100: var(--warning);
+		--slider-dark-base: #82809f;
+		--slider-dark-base-100: #595970;
+		--slider-dark-base-200: #454454;
+		--slider-dark-bg: #3f3e4f;
+		--slider-dark-fg: #d7dada;
+
+		/* Component-specific colors with fallbacks */
+		--slider: var(--range-slider, var(--slider-bg));
+		--handle-inactive: var(--range-handle-inactive, var(--slider-base));
+		--handle: var(--range-handle, var(--slider-accent-100));
+		--handle-focus: var(--range-handle-focus, var(--slider-accent));
+		--handle-border: var(--range-handle-border, var(--handle));
+		--range-inactive: var(--range-range-inactive, var(--handle-inactive));
+		--range: var(--range-range, var(--handle-focus));
+		--range-limit: var(--range-range-limit, var(--slider-base-200));
+		--range-hover: var(--range-range-hover, var(--handle-border));
+		--range-press: var(--range-range-press, var(--handle-border));
+		--float-inactive: var(--range-float-inactive, var(--handle-inactive));
+		--float: var(--range-float, var(--handle-focus));
+		--float-text: var(--range-float-text, white);
+	}
+}
+
+.dark {
+	--background: var(--color-blackened-steel);
+	--foreground: oklch(0.985 0 0);
+	--card: oklch(0.205 0 0);
+	--card-foreground: oklch(0.985 0 0);
+	--popover: oklch(0.269 0 0);
+	--popover-foreground: oklch(0.985 0 0);
+	--primary: oklch(0.646 0.222 180);
+	--primary-foreground: oklch(0.145 0 0);
+	--secondary: oklch(0.269 0 0);
+	--secondary-foreground: oklch(0.985 0 0);
+	--muted: oklch(0.269 0 0);
+	--muted-foreground: oklch(0.708 0 0);
+	--accent: oklch(0.646 0.222 180);
+	--accent-foreground: oklch(0.985 0 0);
+	--destructive: oklch(0.704 0.191 22.216);
+	--border: oklch(1 0 0 / 10%);
+	--input: oklch(1 0 0 / 15%);
+	--ring: oklch(0.556 0 0);
+	--chart-1: oklch(0.488 0.243 264.376);
+	--chart-2: oklch(0.696 0.17 162.48);
+	--chart-3: oklch(0.769 0.188 70.08);
+	--chart-4: oklch(0.627 0.265 303.9);
+	--chart-5: oklch(0.645 0.246 16.439);
+	--sidebar: oklch(0.205 0 0);
+	--sidebar-foreground: oklch(0.985 0 0);
+	--sidebar-primary: oklch(0.488 0.243 264.376);
+	--sidebar-primary-foreground: oklch(0.985 0 0);
+	--sidebar-accent: oklch(0.269 0 0);
+	--sidebar-accent-foreground: oklch(0.985 0 0);
+	--sidebar-border: oklch(1 0 0 / 10%);
+	--sidebar-ring: oklch(0.439 0 0);
+}
+
+/* Light theme overrides */
+.light {
+	--background: #f7f7f7;
+	--foreground: #222;
+	--accent: #3ba39b;
+	--warning: #ffa94d;
+	--divider: #b2b2a2;
+	
+	/* Sidebar variables for light theme */
+	--sidebar-background: #ffffff;
+	--sidebar-foreground: #222;
+	--sidebar-border: #e2e8f0;
+	--sidebar-accent: #f1f5f9;
+	--sidebar-accent-foreground: #222;
+}
+
+body.light {
+	background: var(--background);
+	color: var(--foreground);
+}
+
+.light .logo-invert-light {
+	filter: invert(1) hue-rotate(180deg) saturate(1.2) contrast(1.1);
+}
+
+
+

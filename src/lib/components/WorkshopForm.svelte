@@ -27,6 +27,7 @@
 		totalDuration?: number;
 		eventType?: 'schooldag' | 'event';
 		title?: string;
+		assignedTeams?: string[];
 	}
 </script>
 
@@ -36,12 +37,18 @@
 	import { DatePicker } from '$lib/components/ui/date-picker/index.js';
 	import { TimePicker } from '$lib/components/ui/time-picker/index.js';
 	import Switch from "$lib/components/ui/switch/switch.svelte";
+	import * as Select from '$lib/components/ui/select';
+	import { Badge } from '$lib/components/ui/badge';
+	import { Button } from '$lib/components/ui/button';
+	import X from '@lucide/svelte/icons/x';
+	import { teamStore } from '$lib/stores/team.js';
 
 	export let lessonOptions: Option[] = [];
 	export let schoolOptions: Option[] = [];
 	export let groupOptions: Option[] = [];
 	export let teacherOptions: Option[] = [];
 	export let statusOptions: Option[] = [];
+	export let teamOptions: Option[] = [];
 	export let isEdit: boolean = false;
 	export let initialValues: WorkshopFormValues = {};
 
@@ -57,8 +64,10 @@
 	export let sessions: Session[] = [];
 	export let eventType: 'schooldag' | 'event' = 'schooldag';
 	export let title: string = '';
+	export let selectedTeams: Option[] = [];
 	
 	let switchChecked = false;
+	let teamSelectOpen = false;
 
 	const dispatch = createEventDispatcher();
 
@@ -74,6 +83,19 @@
 		eventType = initialValues.eventType ?? 'schooldag';
 		title = initialValues.title ?? '';
 		switchChecked = (initialValues.eventType ?? 'schooldag') === 'event';
+		
+		// Initialize selected teams
+		if (initialValues.assignedTeams && teamOptions.length > 0) {
+			selectedTeams = teamOptions.filter(opt => initialValues.assignedTeams?.includes(opt.value as string));
+		}
+	}
+	
+	// Auto-select default team for new workshops (when no initial values)
+	$: if (!isEdit && teamOptions.length > 0 && selectedTeams.length === 0 && $teamStore.selectedTeam) {
+		const defaultTeam = teamOptions.find(opt => opt.value === $teamStore.selectedTeam?.$id);
+		if (defaultTeam) {
+			selectedTeams = [defaultTeam];
+		}
 	}
 
 	// Update eventType when switch changes
@@ -297,11 +319,38 @@
 			eventType,
 			title,
 			computedStart,
-			computedEnd
+			computedEnd,
+			assignedTeams: selectedTeams.map(team => team.value as string)
 		});
 	}
 	function handleCancel() {
 		dispatch('cancel');
+	}
+
+	function handleTeamSelect(teamValue: string | number) {
+		console.log('handleTeamSelect called with:', teamValue);
+		console.log('Current selectedTeams:', selectedTeams);
+		console.log('Available teamOptions:', teamOptions);
+		
+		const team = teamOptions.find(t => t.value === teamValue);
+		console.log('Found team:', team);
+		
+		if (team && !selectedTeams.find(st => st.value === team.value)) {
+			selectedTeams = [...selectedTeams, team];
+			console.log('Updated selectedTeams:', selectedTeams);
+		} else {
+			console.log('Team not added - either not found or already selected');
+		}
+		teamSelectOpen = false;
+	}
+
+	function removeTeam(teamValue: string | number) {
+		selectedTeams = selectedTeams.filter(t => t.value !== teamValue);
+	}
+
+	function handleRemoveTeam(event: Event, teamValue: string | number) {
+		event.stopPropagation();
+		removeTeam(teamValue);
 	}
 </script>
 
@@ -442,14 +491,86 @@
 		<textarea bind:value={materialen} rows="2" placeholder="Bijv. laptops, robotkits, werkbladen..."
 		></textarea>
 	</label>
-	<label>
-		Status:
-		<select bind:value={status} required>
-			{#each statusOptions as opt}
-				<option value={opt.value}>{opt.label}</option>
-			{/each}
-		</select>
-	</label>
+	<div class="form-row">
+		<label>
+			Status:
+			<select bind:value={status} required>
+				{#each statusOptions as opt}
+					<option value={opt.value}>{opt.label}</option>
+				{/each}
+			</select>
+		</label>
+		
+		<label>
+			Vakdocenten Teams:
+			<div class="space-y-2">
+				<Select.Root bind:open={teamSelectOpen} onValueChange={handleTeamSelect}>
+					<Select.Trigger class="w-full min-h-[40px] h-auto">
+						<div class="flex-1 flex flex-wrap gap-1 items-center">
+							{#if selectedTeams.length === 0}
+								<span class="text-muted-foreground">Selecteer team(s)...</span>
+							{:else}
+								{#each selectedTeams as team}
+									<Badge 
+										variant="secondary" 
+										class="bg-blue-100 text-blue-800 hover:bg-blue-200 flex items-center gap-1"
+									>
+										{team.label}
+										<Button
+											variant="ghost"
+											size="sm"
+											class="h-4 w-4 p-0 hover:bg-blue-300 rounded-full"
+											on:click={(e) => handleRemoveTeam(e, team.value)}
+										>
+											<X size={12} />
+										</Button>
+									</Badge>
+								{/each}
+							{/if}
+						</div>
+					</Select.Trigger>
+					<Select.Content class="max-h-[200px] overflow-y-auto">
+						{#if teamOptions.length === 0}
+							<Select.Item value="" disabled>Geen teams beschikbaar</Select.Item>
+						{:else}
+							<!-- Group vakdocenten teams -->
+							{@const vakdocentenTeams = teamOptions.filter(team => team.group === 'Vakdocenten Teams')}
+							{@const otherTeams = teamOptions.filter(team => team.group !== 'Vakdocenten Teams')}
+							
+							{#if vakdocentenTeams.length > 0}
+								<Select.Group>
+									<Select.Label>Vakdocenten Teams</Select.Label>
+									{#each vakdocentenTeams as team}
+										{#if !selectedTeams.find(st => st.value === team.value)}
+											<Select.Item value={team.value}>
+												{team.label}
+											</Select.Item>
+										{/if}
+									{/each}
+								</Select.Group>
+							{/if}
+							
+							{#if otherTeams.length > 0}
+								{#if vakdocentenTeams.length > 0}
+									<Select.Separator />
+								{/if}
+								<Select.Group>
+									<Select.Label>Andere Teams</Select.Label>
+									{#each otherTeams as team}
+										{#if !selectedTeams.find(st => st.value === team.value)}
+											<Select.Item value={team.value}>
+												{team.label}
+											</Select.Item>
+										{/if}
+									{/each}
+								</Select.Group>
+							{/if}
+						{/if}
+					</Select.Content>
+				</Select.Root>
+			</div>
+		</label>
+	</div>
 	<div class="modal-actions">
 		<button type="submit">{isEdit ? 'Save' : 'Toevoegen'}</button>
 		<button type="button" on:click={handleCancel}>{isEdit ? 'Cancel' : 'Annuleren'}</button>
@@ -498,6 +619,18 @@
 	textarea {
 		resize: vertical;
 		min-height: 2.5em;
+	}
+	.form-row {
+		grid-column: 1 / -1;
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: 1rem 2rem;
+	}
+	@media (max-width: 600px) {
+		.form-row {
+			grid-template-columns: 1fr;
+			gap: 0.75rem;
+		}
 	}
 	.modal-actions {
 		grid-column: 1 / -1;
