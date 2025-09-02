@@ -11,7 +11,9 @@
     "courses": "Cursussen",
     "overview": "Overzicht",
     "presentation": "Presentatie",
-    "remote_control": "Remote Control"
+    "remote_control": "Remote Control",
+    "klas": "Klas",
+    "gebruiker": "Gebruiker"
   },
   "user": {
     "teacher": "Leraar",

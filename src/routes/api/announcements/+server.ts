@@ -1,5 +1,5 @@
 import { json } from '@sveltejs/kit';
-import { Client, Databases, Users, Query } from 'node-appwrite';
+import { Client, Databases, Users, Teams, Query } from 'node-appwrite';
 import type { RequestHandler } from './$types';
 import type { 
 	Announcement, 
@@ -7,7 +7,7 @@ import type {
 	AnnouncementFilters,
 	AnnouncementStats 
 } from '$lib/types/announcements';
-import { broadcastAnnouncementUpdate } from './stream/+server.js';
+import { broadcastAnnouncementUpdate } from '$lib/server/announcements-broadcast.js';
 import dotenv from 'dotenv';
 dotenv.config();
 
@@ -19,6 +19,7 @@ const serverClient = new Client()
 
 const databases = new Databases(serverClient);
 const users = new Users(serverClient);
+const teams = new Teams(serverClient);
 
 const DATABASE_ID = 'main';
 const COLLECTION_ID = 'announcements';
@@ -199,26 +200,26 @@ async function getUserAccessibleTargets(userId: string): Promise<string[]> {
 	const targets: string[] = [];
 
 	try {
-		// Get user's teams (with error handling for missing collection)
+		// Get user's teams using Appwrite Teams API
 		try {
-			const teamsResponse = await databases.listDocuments('main', 'teams', [
-				Query.equal('members', userId),
-				Query.limit(100)
-			]);
-			targets.push(...teamsResponse.documents.map(t => t.$id));
+			const teamsResponse = await teams.list();
+			
+			for (const team of teamsResponse.teams) {
+				// Check if user is a member of this team
+				try {
+					const memberships = await teams.listMemberships(team.$id);
+					const isMember = memberships.memberships.some(membership => membership.userId === userId);
+					
+					if (isMember) {
+						targets.push(team.$id);
+					}
+				} catch (membershipError) {
+					console.warn(`Could not check membership for team ${team.$id}:`, membershipError);
+					// Continue to next team
+				}
+			}
 		} catch (error) {
-			console.warn('[ANNOUNCEMENTS API] Teams collection not found, skipping teams targets');
-		}
-
-		// Get user's classes (through team assignments)
-		try {
-			const classesResponse = await databases.listDocuments('main', 'classes', [
-				Query.equal('teamId', targets),
-				Query.limit(100)
-			]);
-			targets.push(...classesResponse.documents.map(c => c.$id));
-		} catch (error) {
-			console.warn('[ANNOUNCEMENTS API] Classes collection not found, skipping classes targets');
+			console.warn('[ANNOUNCEMENTS API] Error fetching teams:', error);
 		}
 
 		// Add schools if user is admin
@@ -251,18 +252,15 @@ async function validateUserTargetPermission(userId: string, targetType: string, 
 		// Check specific permissions based on target type
 		switch (targetType) {
 			case 'team':
-				// User must be member of the team
-				const team = await databases.getDocument('main', 'teams', targetId);
-				return team.members.includes(userId);
-				
 			case 'class':
-				// User must be teacher of the class or team member
-				const classDoc = await databases.getDocument('main', 'classes', targetId);
-				if (classDoc.teacherId === userId) return true;
-				
-				// Check if user is in the class's team
-				const classTeam = await databases.getDocument('main', 'teams', classDoc.teamId);
-				return classTeam.members.includes(userId);
+				// For both teams and classes, check if user is a member using Teams API
+				try {
+					const memberships = await teams.listMemberships(targetId);
+					return memberships.memberships.some(membership => membership.userId === userId);
+				} catch (error) {
+					console.warn(`Could not check membership for ${targetType} ${targetId}:`, error);
+					return false;
+				}
 				
 			case 'school':
 				// Only admins and planning role can send school-wide
@@ -281,16 +279,24 @@ async function getTargetName(targetType: string, targetId: string): Promise<stri
 	try {
 		switch (targetType) {
 			case 'team':
-				const team = await databases.getDocument('main', 'teams', targetId);
-				return team.name || 'Team';
-				
 			case 'class':
-				const classDoc = await databases.getDocument('main', 'classes', targetId);
-				return classDoc.name || 'Class';
+				// For both teams and classes, get name from Teams API
+				try {
+					const team = await teams.get(targetId);
+					return team.name || (targetType === 'team' ? 'Team' : 'Class');
+				} catch (error) {
+					console.warn(`Could not get ${targetType} name for ${targetId}:`, error);
+					return targetType === 'team' ? 'Team' : 'Class';
+				}
 				
 			case 'school':
-				const school = await databases.getDocument('scholen', 'school', targetId);
-				return school.NAAM || school.name || 'School';
+				try {
+					const school = await databases.getDocument('scholen', 'school', targetId);
+					return school.NAAM || school.name || 'School';
+				} catch (error) {
+					console.warn(`Could not get school name for ${targetId}:`, error);
+					return 'School';
+				}
 				
 			default:
 				return 'Unknown';

@@ -2,7 +2,7 @@ import { json } from '@sveltejs/kit';
 import { Client, Databases, Users } from 'node-appwrite';
 import type { RequestHandler } from './$types';
 import type { AnnouncementUpdateRequest } from '$lib/types/announcements';
-import { broadcastAnnouncementUpdate } from '../stream/+server.js';
+import { broadcastAnnouncementUpdate } from '$lib/server/announcements-broadcast.js';
 import dotenv from 'dotenv';
 dotenv.config();
 

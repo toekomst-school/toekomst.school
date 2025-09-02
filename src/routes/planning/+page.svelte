@@ -2,7 +2,7 @@
 	declare module '@event-calendar/core';
 </script>
 
-<script>
+<script lang="ts">
 	// import Interaction from '@event-calendar/interaction';
 	// @ts-ignore
 	import List from '@event-calendar/list';

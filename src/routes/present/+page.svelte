@@ -3,6 +3,7 @@
 	import { onMount, onDestroy } from 'svelte';
 	import { marked } from 'marked';
 	import { createSocketManager, type SocketManager, type SessionData } from '$lib/stores/socketManager.js';
+	import { animate } from 'animejs';
 
 	let sessionCode = '';
 	let isPresenting = false;
@@ -26,6 +27,9 @@
 	let isFullscreen = false;
 	let autoFullscreenOnFirstClick = true;
 	let confettiTriggered = false;
+	let isChangingSlide = false;
+	let previousSlideIndex = 0;
+	let navigationDirection: 'next' | 'prev' | null = null;
 	
 	// Workshop time tracking
 	let workshopStartTime = null;
@@ -35,7 +39,328 @@
 	let currentTime = new Date();
 	let workshopData = null;
 	
-
+	// Anime.js animation utilities
+	const animationUtils = {
+		// Slide entrance animations
+		slideInFromRight: (elements: HTMLElement[]) => {
+			if (!elements || elements.length === 0) return;
+			
+			// Filter out any invalid elements
+			const validElements = elements.filter(el => el && el.nodeType === Node.ELEMENT_NODE);
+			if (validElements.length === 0) return;
+			
+			// Use anime.js v4 syntax
+			try {
+				animate(validElements, {
+					x: [
+						{ from: 100, to: 0, duration: 800, ease: 'out(3)' }
+					],
+					y: [
+						{ from: 0, to: 0, duration: 800 } // Reset any Y transform
+					],
+					opacity: [
+						{ from: 0, to: 1, duration: 800, ease: 'out(3)' }
+					],
+					delay: (el: any, i: number) => i * 100
+				});
+			} catch (error) {
+				console.warn('Anime.js error, using CSS fallback:', error);
+				// CSS fallback
+				validElements.forEach((el: any, i: number) => {
+					if (el.style) {
+						el.style.opacity = '0';
+						el.style.transform = 'translateX(100px)';
+						el.style.transition = `opacity 0.8s cubic-bezier(0.25, 0.46, 0.45, 0.94) ${i * 100}ms, transform 0.8s cubic-bezier(0.25, 0.46, 0.45, 0.94) ${i * 100}ms`;
+						requestAnimationFrame(() => {
+							el.style.opacity = '1';
+							el.style.transform = 'translateX(0px)';
+						});
+					}
+				});
+			}
+		},
+		
+		slideInFromLeft: (elements: HTMLElement[]) => {
+			if (!elements || elements.length === 0) return;
+			
+			// Filter out any invalid elements
+			const validElements = elements.filter(el => el && el.nodeType === Node.ELEMENT_NODE);
+			if (validElements.length === 0) return;
+			
+			console.log('slideInFromLeft: targeting elements:', validElements);
+			
+			// Use anime.js v4 syntax
+			try {
+				animate(validElements, {
+					x: [
+						{ from: -100, to: 0, duration: 800, ease: 'out(3)' }
+					],
+					y: [
+						{ from: 0, to: 0, duration: 800 } // Reset any Y transform
+					],
+					opacity: [
+						{ from: 0, to: 1, duration: 800, ease: 'out(3)' }
+					],
+					delay: (el: any, i: number) => i * 100
+				});
+			} catch (error) {
+				console.warn('Anime.js error, using CSS fallback:', error);
+				// CSS fallback
+				validElements.forEach((el: any, i: number) => {
+					if (el.style) {
+						el.style.opacity = '0';
+						el.style.transform = 'translateX(-100px)';
+						el.style.transition = `opacity 0.8s cubic-bezier(0.25, 0.46, 0.45, 0.94) ${i * 100}ms, transform 0.8s cubic-bezier(0.25, 0.46, 0.45, 0.94) ${i * 100}ms`;
+						requestAnimationFrame(() => {
+							el.style.opacity = '1';
+							el.style.transform = 'translateX(0px)';
+						});
+					}
+				});
+			}
+		},
+		
+		fadeInUp: (elements: HTMLElement[]) => {
+			if (!elements || elements.length === 0) return;
+			
+			// Filter out any invalid elements
+			const validElements = elements.filter(el => el && el.nodeType === Node.ELEMENT_NODE);
+			if (validElements.length === 0) return;
+			
+			// Use anime.js v4 syntax
+			try {
+				animate(validElements, {
+					x: [
+						{ from: 0, to: 0, duration: 600 } // Reset any X transform
+					],
+					y: [
+						{ from: 50, to: 0, duration: 600, ease: 'out(3)' }
+					],
+					opacity: [
+						{ from: 0, to: 1, duration: 600, ease: 'out(3)' }
+					],
+					delay: (el: any, i: number) => i * 150
+				});
+			} catch (error) {
+				console.warn('Anime.js error, using CSS fallback:', error);
+				// CSS fallback
+				validElements.forEach((el: any, i: number) => {
+					if (el.style) {
+						el.style.opacity = '0';
+						el.style.transform = 'translateY(50px)';
+						el.style.transition = `opacity 0.6s cubic-bezier(0.25, 0.46, 0.45, 0.94) ${i * 150}ms, transform 0.6s cubic-bezier(0.25, 0.46, 0.45, 0.94) ${i * 150}ms`;
+						requestAnimationFrame(() => {
+							el.style.opacity = '1';
+							el.style.transform = 'translateY(0px)';
+						});
+					}
+				});
+			}
+		},
+		
+		scaleIn: (elements: HTMLElement[]) => {
+			if (!elements || elements.length === 0) return;
+			
+			// Filter out any invalid elements
+			const validElements = elements.filter(el => el && el.nodeType === Node.ELEMENT_NODE);
+			if (validElements.length === 0) return;
+			
+			// Use anime.js v4 syntax
+			try {
+				animate(validElements, {
+					scale: [
+						{ from: 0.8, to: 1, duration: 500, ease: 'outBack(3)' }
+					],
+					opacity: [
+						{ from: 0, to: 1, duration: 500, ease: 'out(3)' }
+					],
+					delay: (el: any, i: number) => i * 100
+				});
+			} catch (error) {
+				console.warn('Anime.js error, using CSS fallback:', error);
+				// CSS fallback
+				validElements.forEach((el: any, i: number) => {
+					if (el.style) {
+						el.style.opacity = '0';
+						el.style.transform = 'scale(0.8)';
+						el.style.transition = `opacity 0.5s cubic-bezier(0.68, -0.55, 0.265, 1.55) ${i * 100}ms, transform 0.5s cubic-bezier(0.68, -0.55, 0.265, 1.55) ${i * 100}ms`;
+						requestAnimationFrame(() => {
+							el.style.opacity = '1';
+							el.style.transform = 'scale(1)';
+						});
+					}
+				});
+			}
+		},
+		
+		// Enhanced confetti animation
+		enhancedConfetti: (elements: HTMLElement[]) => {
+			if (!elements || elements.length === 0) return;
+			
+			// Filter out any invalid elements
+			const validElements = elements.filter(el => el && el.nodeType === Node.ELEMENT_NODE);
+			if (validElements.length === 0) return;
+			
+			try {
+				animate(validElements, {
+					scale: [
+						{ from: 0, to: 1, duration: 2000, ease: 'out(4)' }
+					],
+					rotate: [
+						{ from: 0, to: () => Math.random() * 720 - 360, duration: 2000, ease: 'out(4)' }
+					],
+					y: [
+						{ from: 0, to: -100, duration: 2000, ease: 'out(4)' }
+					],
+					x: [
+						{ from: 0, to: () => Math.random() * 400 - 200, duration: 2000, ease: 'out(4)' }
+					],
+					opacity: [
+						{ from: 1, to: 0, duration: 2000, ease: 'out(4)' }
+					],
+					delay: (el: any, i: number) => 100 + i * 50
+				});
+			} catch (error) {
+				console.warn('Animation error in enhancedConfetti:', error);
+				// CSS fallback for confetti
+				validElements.forEach((el: any, i: number) => {
+					if (el.style) {
+						const rotation = Math.random() * 720 - 360;
+						const translateX = Math.random() * 400 - 200;
+						el.style.transform = `scale(0) rotate(${rotation}deg) translate(${translateX}px, 0px)`;
+						el.style.transition = `all 2s cubic-bezier(0.25, 0.46, 0.45, 0.94) ${100 + i * 50}ms`;
+						requestAnimationFrame(() => {
+							el.style.transform = `scale(1) rotate(${rotation}deg) translate(${translateX}px, -100px)`;
+							el.style.opacity = '0';
+						});
+					}
+				});
+			}
+		},
+		
+		// Animate bullet points with more pronounced staggering
+		animateBulletPoints: (elements: HTMLElement[]) => {
+			if (!elements || elements.length === 0) return;
+			
+			// Filter out any invalid elements
+			const validElements = elements.filter(el => el && el.nodeType === Node.ELEMENT_NODE);
+			if (validElements.length === 0) return;
+			
+			// Use anime.js v4 syntax with longer delays for bullet points
+			try {
+				animate(validElements, {
+					x: [
+						{ from: 0, to: 0, duration: 500 } // Reset any X transform
+					],
+					y: [
+						{ from: 30, to: 0, duration: 500, ease: 'out(3)' }
+					],
+					opacity: [
+						{ from: 0, to: 1, duration: 500, ease: 'out(3)' }
+					],
+					delay: (el: any, i: number) => i * 200 // 200ms delay between each bullet
+				});
+			} catch (error) {
+				console.warn('Anime.js error, using CSS fallback:', error);
+				// CSS fallback
+				validElements.forEach((el: any, i: number) => {
+					if (el.style) {
+						el.style.opacity = '0';
+						el.style.transform = 'translateY(30px)';
+						el.style.transition = `opacity 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94) ${i * 200}ms, transform 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94) ${i * 200}ms`;
+						requestAnimationFrame(() => {
+							el.style.opacity = '1';
+							el.style.transform = 'translateY(0px)';
+						});
+					}
+				});
+			}
+		},
+		
+		// Ensure elements are hidden before animation (CSS handles this, but reinforcement for safety)
+		hideElementsBeforeAnimation: (slideElement: HTMLElement) => {
+			if (!slideElement) return;
+			
+			// CSS already handles initial hiding, this is just a safety net
+			const allAnimatedElements = slideElement.querySelectorAll('h1, h2, h3, h4, h5, h6, p, li, img, pre, code');
+			allAnimatedElements.forEach((el: any) => {
+				if (el.style && el.style.opacity !== '0') {
+					el.style.opacity = '0';
+					el.style.transform = 'translateY(20px)';
+				}
+			});
+		},
+		
+		// Animate slide content based on type and direction
+		animateSlideContent: (slideElement: HTMLElement, direction: 'next' | 'prev' | null = null) => {
+			if (!slideElement) return;
+			
+			// Hide all elements first
+			animationUtils.hideElementsBeforeAnimation(slideElement);
+			
+			try {
+				const headings = slideElement.querySelectorAll('h1, h2, h3, h4, h5, h6');
+				const paragraphs = slideElement.querySelectorAll('p');
+				const lists = slideElement.querySelectorAll('ul, ol');
+				const images = slideElement.querySelectorAll('img');
+				const codeBlocks = slideElement.querySelectorAll('pre, code');
+				
+				// Animate headings first - direction matters here
+				if (headings.length > 0) {
+					console.log('Animating headings:', headings.length, 'direction:', direction);
+					if (direction === 'prev') {
+						animationUtils.slideInFromRight(Array.from(headings) as HTMLElement[]);
+					} else {
+						animationUtils.slideInFromLeft(Array.from(headings) as HTMLElement[]);
+					}
+				}
+				
+				// Then paragraphs and bullet points
+				setTimeout(() => {
+					try {
+						if (paragraphs.length > 0) {
+							animationUtils.fadeInUp(Array.from(paragraphs) as HTMLElement[]);
+						}
+						
+						// Animate bullet points individually with staggered timing
+						const listItems = slideElement.querySelectorAll('li');
+						if (listItems.length > 0) {
+							console.log('Animating list items:', listItems.length);
+							animationUtils.animateBulletPoints(Array.from(listItems) as HTMLElement[]);
+						}
+						
+						// Animate list containers (ul/ol) if they have no list items (empty lists)
+						if (lists.length > 0 && listItems.length === 0) {
+							animationUtils.fadeInUp(Array.from(lists) as HTMLElement[]);
+						}
+					} catch (error) {
+						console.warn('Error animating paragraphs/lists:', error);
+					}
+				}, 200);
+				
+				// Then images and code blocks
+				setTimeout(() => {
+					try {
+						if (images.length > 0) {
+							animationUtils.scaleIn(Array.from(images) as HTMLElement[]);
+						}
+						if (codeBlocks.length > 0) {
+							// Code blocks slide from opposite direction of headings
+							if (direction === 'prev') {
+								animationUtils.slideInFromLeft(Array.from(codeBlocks) as HTMLElement[]);
+							} else {
+								animationUtils.slideInFromRight(Array.from(codeBlocks) as HTMLElement[]);
+							}
+						}
+					} catch (error) {
+						console.warn('Error animating images/code:', error);
+					}
+				}, 400);
+			} catch (error) {
+				console.warn('Error in animateSlideContent:', error);
+			}
+		}
+	};
 
 	// Generate a random 4-character code (A-Z, 0-9)
 	function generateCode() {
@@ -453,6 +778,10 @@
 			slideNotes = parsed.notes;
 			totalSlides = parsed.slides.length + 1; // +1 for end slide
 			currentSlideNotes = slideNotes[currentSlide] || '';
+			
+			// Reset confetti flag when new lesson loads
+			confettiTriggered = false;
+			console.log('Lesson updated, reset confetti flag. Total slides:', totalSlides);
 		}
 
 		// Update workshop data
@@ -608,7 +937,20 @@
 			
 			// Listen for slide changes
 			revealInstance.addEventListener('slidechanged', (event: any) => {
-				currentSlide = event.indexh;
+				const newSlideIndex = event.indexh;
+				
+				// Determine navigation direction
+				if (newSlideIndex > previousSlideIndex) {
+					navigationDirection = 'next';
+				} else if (newSlideIndex < previousSlideIndex) {
+					navigationDirection = 'prev';
+				} else {
+					navigationDirection = null; // Same slide or initial load
+				}
+				
+				currentSlide = newSlideIndex;
+				previousSlideIndex = newSlideIndex;
+				
 				// Update current slide notes
 				currentSlideNotes = slideNotes[currentSlide] || '';
 				updateSlide();
@@ -616,16 +958,64 @@
 				// Reset keyboard navigation flag
 				isChangingSlide = false;
 				
-				// Trigger confetti only on the hardcoded workshop end slide
+				// Animate slide content with Anime.js
 				const currentSlideElement = revealInstance.getCurrentSlide();
-				if (currentSlideElement && currentSlideElement.getAttribute('data-slide') === 'last') {
-					if (!confettiTriggered) {
-						confettiTriggered = true;
-						triggerConfetti();
-					}
-				} else {
+				if (currentSlideElement) {
+					// Apply entrance animations to slide content with direction awareness
+					// (Each slide change creates fresh animations, no need to clear previous ones)
+					animationUtils.animateSlideContent(currentSlideElement, navigationDirection);
+				}
+				
+				// Trigger confetti on the last slide
+				const currentSlideIndex = revealInstance.getIndices().h;
+				const isLastSlideByIndex = currentSlideIndex === totalSlides - 1;
+				const isLastSlideByAttribute = currentSlideElement && currentSlideElement.getAttribute('data-slide') === 'last';
+				
+				console.log('Slide detection:', {
+					currentSlideIndex,
+					totalSlides,
+					isLastSlideByIndex,
+					isLastSlideByAttribute,
+					dataSlideAttr: currentSlideElement?.getAttribute('data-slide'),
+					confettiTriggered
+				});
+				
+				if ((isLastSlideByAttribute || isLastSlideByIndex) && !confettiTriggered) {
+					console.log('🎆 Triggering confetti!');
+					confettiTriggered = true;
+					triggerConfetti();
+				} else if (!isLastSlideByAttribute && !isLastSlideByIndex) {
 					// Reset confetti flag when leaving the last slide
 					confettiTriggered = false;
+				}
+			});
+			
+			// Listen for fragment animations
+			revealInstance.addEventListener('fragmentshown', (event: any) => {
+				const fragment = event.fragment;
+				if (fragment) {
+					// Animate the fragment that just appeared
+					animate({
+						targets: fragment,
+						opacity: [0, 1],
+						scale: [0.9, 1],
+						duration: 400,
+						easing: 'easeOutQuad'
+					});
+				}
+			});
+			
+			revealInstance.addEventListener('fragmenthidden', (event: any) => {
+				const fragment = event.fragment;
+				if (fragment) {
+					// Animate the fragment that just disappeared
+					animate({
+						targets: fragment,
+						opacity: [1, 0],
+						scale: [1, 0.9],
+						duration: 300,
+						easing: 'easeInQuad'
+					});
 				}
 			});
 		} else {
@@ -756,58 +1146,177 @@
 	}
 
 	function triggerConfetti() {
-		// Create confetti container
-		const confettiContainer = document.createElement('div');
-		confettiContainer.className = 'confetti-container';
-		document.body.appendChild(confettiContainer);
+		console.log('Triggering SVG confetti!');
 		
-		// Create 3 random explosion points
+		// Create SVG container
+		const svgElement = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+		svgElement.style.position = 'fixed';
+		svgElement.style.top = '0';
+		svgElement.style.left = '0';
+		svgElement.style.width = '100%';
+		svgElement.style.height = '100%';
+		svgElement.style.pointerEvents = 'none';
+		svgElement.style.zIndex = '9999';
+		svgElement.setAttribute('viewBox', `0 0 ${window.innerWidth} ${window.innerHeight}`);
+		document.body.appendChild(svgElement);
+		
+		const colors = ['#ffa94d', '#3ba39b', '#ff6b6b', '#4ecdc4', '#45b7d1', '#f9ca24', '#fd79a8', '#6c5ce7'];
+		
+		// Create 3 explosion points
 		const explosionPoints = [
-			{ x: Math.random() * 60 + 20, y: Math.random() * 40 + 20 }, // Top area
-			{ x: Math.random() * 60 + 20, y: Math.random() * 40 + 40 }, // Middle area  
-			{ x: Math.random() * 60 + 20, y: Math.random() * 40 + 60 }  // Bottom area
+			{ x: window.innerWidth * 0.3, y: window.innerHeight * 0.3 },
+			{ x: window.innerWidth * 0.7, y: window.innerHeight * 0.4 },
+			{ x: window.innerWidth * 0.5, y: window.innerHeight * 0.6 }
 		];
 		
-		// Create confetti for each explosion point
+		const confettiPieces: SVGElement[] = [];
+		
 		explosionPoints.forEach((point, explosionIndex) => {
-			for (let i = 0; i < 30; i++) {
-				const confettiPiece = document.createElement('div');
-				confettiPiece.className = 'confetti-piece';
+			for (let i = 0; i < 25; i++) {
+				// Create different shapes randomly
+				let shape: SVGElement;
+				const shapeType = Math.floor(Math.random() * 3);
+				const color = colors[Math.floor(Math.random() * colors.length)];
 				
-				// Random colors
-				const colors = ['#ffa94d', '#3ba39b', '#ff6b6b', '#4ecdc4', '#45b7d1', '#f9ca24'];
-				confettiPiece.style.backgroundColor = colors[Math.floor(Math.random() * colors.length)];
+				if (shapeType === 0) {
+					// Circle
+					shape = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+					shape.setAttribute('r', '8');
+					shape.setAttribute('cx', point.x.toString());
+					shape.setAttribute('cy', point.y.toString());
+				} else if (shapeType === 1) {
+					// Rectangle
+					shape = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+					shape.setAttribute('width', '12');
+					shape.setAttribute('height', '8');
+					shape.setAttribute('x', (point.x - 6).toString());
+					shape.setAttribute('y', (point.y - 4).toString());
+					shape.setAttribute('rx', '2');
+				} else {
+					// Triangle (polygon)
+					shape = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+					const points = `${point.x},${point.y-8} ${point.x-8},${point.y+6} ${point.x+8},${point.y+6}`;
+					shape.setAttribute('points', points);
+				}
 				
-				// Start from explosion point
-				confettiPiece.style.left = point.x + '%';
-				confettiPiece.style.top = point.y + '%';
+				shape.setAttribute('fill', color);
+				shape.setAttribute('stroke', 'rgba(255,255,255,0.5)');
+				shape.setAttribute('stroke-width', '1');
+				shape.style.opacity = '1';
 				
-				// Random explosion direction and distance
-				const angle = (Math.random() * 360) * (Math.PI / 180);
-				const distance = Math.random() * 200 + 80;
-				const duration = Math.random() * 2 + 1.5;
-				
-				// Calculate end position
-				const endX = Math.cos(angle) * distance;
-				const endY = Math.sin(angle) * distance;
-				
-				// Set CSS custom properties for animation
-				confettiPiece.style.setProperty('--end-x', endX + 'px');
-				confettiPiece.style.setProperty('--end-y', endY + 'px');
-				confettiPiece.style.animationDuration = duration + 's';
-				// Stagger explosions slightly
-				confettiPiece.style.animationDelay = (explosionIndex * 0.2 + Math.random() * 0.3) + 's';
-				
-				confettiContainer.appendChild(confettiPiece);
+				svgElement.appendChild(shape);
+				confettiPieces.push(shape);
 			}
 		});
 		
-		// Remove confetti after animation
+		console.log(`Created ${confettiPieces.length} SVG confetti pieces`);
+		
+		// Animate using CSS animations and transforms
+		confettiPieces.forEach((piece, index) => {
+			const centerX = explosionPoints[Math.floor(index / 25)].x;
+			const centerY = explosionPoints[Math.floor(index / 25)].y;
+			
+			// Random animation properties
+			const endX = centerX + (Math.random() - 0.5) * 600;
+			const endY = centerY + Math.random() * 600 + 200;
+			const rotation = Math.random() * 720; // Multiple rotations
+			const duration = 2000 + Math.random() * 1000; // Varying durations
+			
+			// Set transform origin to the center of the shape
+			piece.style.transformOrigin = `${centerX}px ${centerY}px`;
+			
+			// Apply CSS animation
+			piece.style.transition = `transform ${duration}ms cubic-bezier(0.25, 0.46, 0.45, 0.94), opacity ${duration}ms ease-out`;
+			
+			// Start animation on next frame
+			requestAnimationFrame(() => {
+				piece.style.transform = `translate(${endX - centerX}px, ${endY - centerY}px) rotate(${rotation}deg) scale(0.5)`;
+				piece.style.opacity = '0';
+			});
+		});
+		
+		// Clean up after animation
 		setTimeout(() => {
-			if (confettiContainer.parentNode) {
-				confettiContainer.parentNode.removeChild(confettiContainer);
-			}
-		}, 5000);
+			svgElement.remove();
+			console.log('SVG confetti animation complete');
+		}, 4000);
+		
+		// Add celebration text animation
+		const celebrationText = document.createElement('div');
+		celebrationText.textContent = '🎉 Presentation Complete! 🎉';
+		celebrationText.style.position = 'fixed';
+		celebrationText.style.top = '40%';
+		celebrationText.style.left = '50%';
+		celebrationText.style.transform = 'translate(-50%, -50%) scale(0.5)';
+		celebrationText.style.fontSize = '2.5rem';
+		celebrationText.style.fontWeight = 'bold';
+		celebrationText.style.color = '#333';
+		celebrationText.style.textAlign = 'center';
+		celebrationText.style.zIndex = '10000';
+		celebrationText.style.pointerEvents = 'none';
+		celebrationText.style.opacity = '0';
+		document.body.appendChild(celebrationText);
+		
+		// Animate celebration text with CSS fallback
+		console.log('Animating celebration text');
+		
+		try {
+			// Try anime.js v4 animation
+			animate(celebrationText, {
+				opacity: [
+					{ from: 0, to: 1, duration: 1000, ease: 'outElastic(1)' }
+				],
+				scale: [
+					{ from: 0.5, to: 1.1, duration: 500, ease: 'outElastic(1)' },
+					{ from: 1.1, to: 1, duration: 500, ease: 'outElastic(1)' }
+				],
+				rotate: [
+					{ from: -5, to: 5, duration: 500, ease: 'outElastic(1)' },
+					{ from: 5, to: 0, duration: 500, ease: 'outElastic(1)' }
+				],
+				onComplete: () => {
+					console.log('Celebration text animation completed');
+					setTimeout(() => {
+						animate(celebrationText, {
+							opacity: [
+								{ from: 1, to: 0, duration: 800, ease: 'out(2)' }
+							],
+							scale: [
+								{ from: 1, to: 0.8, duration: 800, ease: 'out(2)' }
+							],
+							onComplete: () => {
+								if (celebrationText.parentNode) {
+									celebrationText.parentNode.removeChild(celebrationText);
+								}
+							}
+						});
+					}, 2500);
+				}
+			});
+		} catch (error) {
+			console.warn('Anime.js celebration text failed, using CSS fallback:', error);
+			
+			// CSS fallback animation
+			celebrationText.style.transition = 'all 1s cubic-bezier(0.68, -0.55, 0.265, 1.55)';
+			
+			requestAnimationFrame(() => {
+				celebrationText.style.opacity = '1';
+				celebrationText.style.transform = 'translate(-50%, -50%) scale(1)';
+			});
+			
+			// Fade out after delay
+			setTimeout(() => {
+				celebrationText.style.transition = 'all 0.8s cubic-bezier(0.25, 0.46, 0.45, 0.94)';
+				celebrationText.style.opacity = '0';
+				celebrationText.style.transform = 'translate(-50%, -50%) scale(0.8)';
+				
+				setTimeout(() => {
+					if (celebrationText.parentNode) {
+						celebrationText.parentNode.removeChild(celebrationText);
+					}
+				}, 800);
+			}, 2500);
+		}
 	}
 
 
@@ -949,6 +1458,29 @@
 </div>
 
 <style>
+	/* Hide slide content before animation */
+	.reveal .slides section h1,
+	.reveal .slides section h2,
+	.reveal .slides section h3,
+	.reveal .slides section h4,
+	.reveal .slides section h5,
+	.reveal .slides section h6,
+	.reveal .slides section p,
+	.reveal .slides section li,
+	.reveal .slides section img,
+	.reveal .slides section pre,
+	.reveal .slides section code {
+		opacity: 0;
+		transform: translateY(20px);
+		transition: none; /* Disable default transitions to let anime.js handle them */
+	}
+	
+	/* Show elements that shouldn't be animated */
+	.reveal .slides section .no-animate {
+		opacity: 1 !important;
+		transform: none !important;
+	}
+	
 	.connect-container {
 		min-height: 100vh;
 		background: 
@@ -1229,9 +1761,10 @@
 	}
 
 	.school-name {
-		font-weight: 700;
-		font-size: 1.1rem;
-		color: #3ba39b;
+		font-weight: 400;
+		font-size: 0.75rem;
+		color: var(--muted-foreground);
+		opacity: 0.7;
 	}
 
 	.class-name {
@@ -1362,11 +1895,13 @@
 	}
 
 	.game-link {
+		display: inline-block;
 		padding: 1.5rem 2rem;
 		background: var(--warning);
 		border-radius: 15px;
 		margin: 2rem auto;
-		max-width: 500px;
+		min-width: fit-content;
+		width: auto;
 		box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
 		transform: scale(1) rotate(3deg);
 		transition: all 0.3s ease;

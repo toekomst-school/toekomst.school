@@ -4,23 +4,41 @@
 	import { user } from '$lib/stores/auth.js';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
-	import { Plus, Edit, Trash2, Users, UserPlus, UserX } from 'lucide-svelte';
+	import * as Card from '$lib/components/ui/card/index.js';
+	import * as Select from '$lib/components/ui/select/index.js';
+	import { Input } from '$lib/components/ui/input/index.js';
+	import { Label } from '$lib/components/ui/label/index.js';
+	import { Textarea } from '$lib/components/ui/textarea/index.js';
+	import { Plus, Edit, Trash2, Users, UserPlus, UserX, MapPin, Phone, Mail, Settings } from 'lucide-svelte';
 	import { goto } from '$app/navigation';
+	import type { TeamType } from '$lib/types/teams';
+	import { canManageWorkforceTeams, isSuperAdmin } from '$lib/types/teams';
 
 	// User role permissions
 	$: userRole = $user?.labels?.[0] || 'student';
 	$: isAdmin = userRole === 'admin';
 	$: isVakdocent = userRole === 'vakdocent';
-	$: canManageTeams = isAdmin;
+	$: canManageTeams = canManageWorkforceTeams(userRole);
 	$: canManageUsers = isAdmin || isVakdocent;
+	$: isSuperAdminUser = isSuperAdmin(userRole);
 	
 
 	// Team management state
 	let showTeamModal = false;
 	let editingTeam: any = null;
 	let editingUser: any = null;
+	
+	// Enhanced team form fields
 	let teamName = '';
 	let teamDescription = '';
+	let teamLocation = '';
+	let teamPhoneNumber = '';
+	let teamEmailAddress = '';
+	let teamType: TeamType = 'workforce';
+	let teamCapacity: number | undefined = undefined;
+	let teamIsPublic = false;
+	
+	// User form fields
 	let userName = '';
 	let userEmail = '';
 	let userPhone = '';
@@ -131,14 +149,26 @@
 		teamStore.setLoading(true);
 		
 		try {
+			const teamData: any = {
+				name: teamName,
+				description: teamDescription,
+				adminUserId: $user.$id,
+				type: teamType
+			};
+
+			// Add enhanced fields for super admins
+			if (isSuperAdminUser) {
+				if (teamLocation) teamData.location = teamLocation;
+				if (teamPhoneNumber) teamData.phoneNumber = teamPhoneNumber;
+				if (teamEmailAddress) teamData.emailAddress = teamEmailAddress;
+				if (teamCapacity) teamData.capacity = teamCapacity;
+				teamData.isPublic = teamIsPublic;
+			}
+
 			const response = await fetch('/api/teams', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({
-					name: teamName,
-					description: teamDescription,
-					adminUserId: $user.$id
-				})
+				body: JSON.stringify(teamData)
 			});
 			
 			const data = await response.json();
@@ -339,7 +369,13 @@
 	function openTeamModal(team: any = null) {
 		editingTeam = team;
 		teamName = team?.name || '';
-		teamDescription = team?.description || '';
+		teamDescription = team?.prefs?.description || '';
+		teamLocation = team?.prefs?.location || '';
+		teamPhoneNumber = team?.prefs?.phoneNumber || '';
+		teamEmailAddress = team?.prefs?.emailAddress || '';
+		teamType = team?.prefs?.type || 'workforce';
+		teamCapacity = team?.prefs?.capacity || undefined;
+		teamIsPublic = team?.prefs?.isPublic || false;
 		showTeamModal = true;
 	}
 
@@ -348,6 +384,12 @@
 		editingTeam = null;
 		teamName = '';
 		teamDescription = '';
+		teamLocation = '';
+		teamPhoneNumber = '';
+		teamEmailAddress = '';
+		teamType = 'workforce';
+		teamCapacity = undefined;
+		teamIsPublic = false;
 	}
 
 	function resetUserForm() {
@@ -571,40 +613,165 @@
 	{/if}
 </div>
 
-<!-- Team Modal -->
-{#if showTeamModal}
-	<div class="modal-backdrop" on:click={closeTeamModal}></div>
-	<div class="modal">
-		<h3>{editingTeam ? 'Edit Team' : 'Create New Team'}</h3>
-		<form on:submit|preventDefault={editingTeam ? updateTeam : createTeam}>
-			<div class="form-group">
-				<label for="teamName">Team Name</label>
-				<input
-					id="teamName"
-					type="text"
-					bind:value={teamName}
-					placeholder="Enter team name"
-					required
-				/>
-			</div>
-			<div class="form-group">
-				<label for="teamDescription">Description</label>
-				<textarea
-					id="teamDescription"
-					bind:value={teamDescription}
-					placeholder="Enter team description"
-					rows="3"
-				></textarea>
-			</div>
-			<div class="form-actions">
-				<Button type="button" variant="outline" on:click={closeTeamModal}>Cancel</Button>
+<!-- Enhanced Team Modal -->
+<Dialog.Root bind:open={showTeamModal}>
+	<Dialog.Trigger />
+	<Dialog.Content class="sm:max-w-[600px] bg-background text-foreground border border-border">
+		<Dialog.Header>
+			<Dialog.Title class="flex items-center gap-2">
+				<Settings size={20} />
+				{editingTeam ? 'Edit Team' : 'Create New Team'}
+			</Dialog.Title>
+			<Dialog.Description>
+				{#if isSuperAdminUser}
+					Configure team settings including contact information and organizational details.
+				{:else}
+					Create a basic team for workforce management.
+				{/if}
+			</Dialog.Description>
+		</Dialog.Header>
+		
+		<form on:submit|preventDefault={editingTeam ? updateTeam : createTeam} class="space-y-6">
+			<!-- Basic Information -->
+			<Card.Root>
+				<Card.Header>
+					<Card.Title class="text-lg">Basic Information</Card.Title>
+				</Card.Header>
+				<Card.Content class="space-y-4">
+					<div class="grid gap-2">
+						<Label for="teamName">Team Name *</Label>
+						<Input
+							id="teamName"
+							bind:value={teamName}
+							placeholder="Enter team name"
+							required
+						/>
+					</div>
+					
+					<div class="grid gap-2">
+						<Label for="teamDescription">Description</Label>
+						<Textarea
+							id="teamDescription"
+							bind:value={teamDescription}
+							placeholder="Enter team description"
+							rows={3}
+						/>
+					</div>
+
+					{#if isSuperAdminUser}
+						<div class="grid gap-2">
+							<Label for="teamType">Team Type</Label>
+							<Select.Root bind:selected={teamType}>
+								<Select.Trigger>
+									<Select.Value placeholder="Select team type" />
+								</Select.Trigger>
+								<Select.Content>
+									<Select.Item value="workforce">Workforce Team</Select.Item>
+									<Select.Item value="administrative">Administrative</Select.Item>
+									<Select.Item value="project">Project Team</Select.Item>
+								</Select.Content>
+							</Select.Root>
+						</div>
+					{/if}
+				</Card.Content>
+			</Card.Root>
+
+			<!-- Contact Information (Super Admin Only) -->
+			{#if isSuperAdminUser}
+				<Card.Root>
+					<Card.Header>
+						<Card.Title class="text-lg flex items-center gap-2">
+							<Mail size={16} />
+							Contact Information
+						</Card.Title>
+						<Card.Description>
+							Contact details for this team that will be visible to all team admins.
+						</Card.Description>
+					</Card.Header>
+					<Card.Content class="space-y-4">
+						<div class="grid gap-2">
+							<Label for="teamLocation" class="flex items-center gap-2">
+								<MapPin size={14} />
+								Location
+							</Label>
+							<Input
+								id="teamLocation"
+								bind:value={teamLocation}
+								placeholder="Office location or address"
+							/>
+						</div>
+						
+						<div class="grid gap-2">
+							<Label for="teamPhoneNumber" class="flex items-center gap-2">
+								<Phone size={14} />
+								Phone Number
+							</Label>
+							<Input
+								id="teamPhoneNumber"
+								bind:value={teamPhoneNumber}
+								placeholder="+31 6 12345678"
+								type="tel"
+							/>
+						</div>
+						
+						<div class="grid gap-2">
+							<Label for="teamEmailAddress" class="flex items-center gap-2">
+								<Mail size={14} />
+								Email Address
+							</Label>
+							<Input
+								id="teamEmailAddress"
+								bind:value={teamEmailAddress}
+								placeholder="team@example.com"
+								type="email"
+							/>
+						</div>
+					</Card.Content>
+				</Card.Root>
+
+				<!-- Advanced Settings -->
+				<Card.Root>
+					<Card.Header>
+						<Card.Title class="text-lg">Advanced Settings</Card.Title>
+					</Card.Header>
+					<Card.Content class="space-y-4">
+						<div class="grid gap-2">
+							<Label for="teamCapacity">Team Capacity</Label>
+							<Input
+								id="teamCapacity"
+								bind:value={teamCapacity}
+								placeholder="Maximum team members"
+								type="number"
+								min="1"
+							/>
+						</div>
+						
+						<div class="flex items-center space-x-2">
+							<input
+								id="teamIsPublic"
+								type="checkbox"
+								bind:checked={teamIsPublic}
+								class="rounded border-gray-300"
+							/>
+							<Label for="teamIsPublic" class="text-sm font-normal">
+								Make team publicly visible
+							</Label>
+						</div>
+					</Card.Content>
+				</Card.Root>
+			{/if}
+
+			<Dialog.Footer class="flex gap-2">
+				<Button type="button" variant="outline" on:click={closeTeamModal}>
+					Cancel
+				</Button>
 				<Button type="submit" variant="default">
 					{editingTeam ? 'Update' : 'Create'} Team
 				</Button>
-			</div>
+			</Dialog.Footer>
 		</form>
-	</div>
-{/if}
+	</Dialog.Content>
+</Dialog.Root>
 
 
 <style>

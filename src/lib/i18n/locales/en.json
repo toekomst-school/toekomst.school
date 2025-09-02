@@ -11,7 +11,9 @@
     "courses": "Courses",
     "overview": "Overview",
     "presentation": "Presentation",
-    "remote_control": "Remote Control"
+    "remote_control": "Remote Control",
+    "klas": "Class",
+    "gebruiker": "User"
   },
   "user": {
     "teacher": "Teacher",

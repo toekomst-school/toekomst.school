@@ -68,6 +68,10 @@
 					}
 				});
 				
+				// Initialize offline functionality
+				const { offlineActions } = await import('$lib/stores/offline');
+				offlineActions.initialize();
+				
 				// Register for background sync if supported
 				if (registration.sync) {
 					registration.sync.register('background-sync-planning');
@@ -197,6 +201,27 @@
 			breadcrumbSecond = $_('nav.presentation');
 			breadcrumbSecondHref = '/connect';
 			breadcrumbPage = $_('nav.remote_control');
+		} else if (currentPath.startsWith('/profile')) {
+			// Determine breadcrumb based on user type
+			// For team members (vakdocenten): team -> gebruiker
+			// For school users (teachers/students): klas -> gebruiker  
+			const isTeamMember = $user?.labels?.includes('vakdocent') || $user?.labels?.includes('admin') || $user?.labels?.includes('planning');
+			
+			if (isTeamMember) {
+				breadcrumbSecond = $_('nav.team');
+				breadcrumbSecondHref = '/team';
+			} else {
+				breadcrumbSecond = $_('nav.klas');
+				breadcrumbSecondHref = '/klas';
+			}
+			
+			if (/^\/profile\/[a-zA-Z0-9_-]+$/.test(currentPath)) {
+				breadcrumbPage = $_('nav.gebruiker');
+			} else if (currentPath === '/profile/edit') {
+				breadcrumbPage = $_('pages.edit_profile');
+			} else {
+				breadcrumbPage = $_('pages.profile');
+			}
 		} else {
 			breadcrumbSecond = $_('nav.overview');
 			breadcrumbSecondHref = '/';

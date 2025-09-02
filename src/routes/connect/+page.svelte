@@ -99,6 +99,42 @@
 		return separators + 1;
 	}
 
+	function getCurrentSessionLesson(workshopData: any): string | null {
+		if (!workshopData?.sessions) return null;
+		
+		const now = new Date();
+		
+		// Find current active session
+		const currentSession = workshopData.sessions.find((session: any) => {
+			if (!session.start || !session.end || session.type !== 'session') return false;
+			const sessionStart = new Date(session.start);
+			const sessionEnd = new Date(session.end);
+			return now >= sessionStart && now <= sessionEnd;
+		});
+		
+		if (currentSession?.lesson) {
+			return currentSession.lesson;
+		}
+		
+		// If no current session, find the next upcoming session
+		const upcomingSession = workshopData.sessions.find((session: any) => {
+			if (!session.start || session.type !== 'session') return false;
+			const sessionStart = new Date(session.start);
+			return now < sessionStart;
+		});
+		
+		if (upcomingSession?.lesson) {
+			return upcomingSession.lesson;
+		}
+		
+		// Fall back to first session with a lesson
+		const firstSessionWithLesson = workshopData.sessions.find((session: any) => 
+			session.type === 'session' && session.lesson
+		);
+		
+		return firstSessionWithLesson?.lesson || null;
+	}
+
 	function parseMarkdownSlidesWithNotes(markdown: string): { slides: string[], notes: string[] } {
 		if (!markdown) return { slides: [], notes: [] };
 		
@@ -155,9 +191,16 @@
 				await loadSchoolData(workshopData.school);
 			}
 			
-			// Load lesson data if workshop has a lesson reference
-			if (workshopData.lesson) {
-				const lesson = await databases.getDocument('lessen', 'les', workshopData.lesson);
+			// Calculate workshop start/end times from sessions if they exist
+			if (workshopData.sessions && workshopData.sessions.length > 0) {
+				workshopData.computedStart = workshopData.sessions[0].start;
+				workshopData.computedEnd = workshopData.sessions[workshopData.sessions.length - 1].end;
+			}
+			
+			// Load lesson data if workshop has a lesson reference (workshop level or session level)
+			let lessonToLoad = workshopData.lesson || getCurrentSessionLesson(workshopData);
+			if (lessonToLoad) {
+				const lesson = await databases.getDocument('lessen', 'les', lessonToLoad);
 				slides = lesson.slides || '';
 				totalSlides = countSlidesInMarkdown(slides);
 				// Parse slides with notes
@@ -165,6 +208,11 @@
 				slideNotes = parsed.notes;
 				// Update current slide notes
 				currentSlideNotes = slideNotes[currentSlide] || '';
+				
+				// Create lessonData for display purposes only if we have actual lesson content
+				if (slides) {
+					lessonData = lesson;
+				}
 			}
 		} catch (error) {
 			console.error('Error loading workshop:', error);
@@ -246,12 +294,17 @@
 			}
 			
 			// Auto-load lesson from current/upcoming workshop
-			if (upcomingWorkshops.length > 0 && upcomingWorkshops[0].lesson) {
-				console.log('Auto-loading lesson from current workshop:', upcomingWorkshops[0]);
-				console.log('Workshop lesson ID:', upcomingWorkshops[0].lesson);
+			if (upcomingWorkshops.length > 0) {
+				console.log('Found workshop:', upcomingWorkshops[0]);
 				
 				// Store the workshop data BEFORE loading lesson
 				workshopData = upcomingWorkshops[0];
+				
+				// Calculate workshop start/end times from sessions if they exist
+				if (workshopData.sessions && workshopData.sessions.length > 0) {
+					workshopData.computedStart = workshopData.sessions[0].start;
+					workshopData.computedEnd = workshopData.sessions[workshopData.sessions.length - 1].end;
+				}
 				
 				// Load school data for the workshop
 				if (workshopData.school) {
@@ -265,8 +318,23 @@
 					}
 				}
 				
-				await loadLessonData(upcomingWorkshops[0].lesson);
-				showLessonSelection = false; // Hide selection since we loaded the workshop lesson
+				// Load available lessons first for the dropdown
+				await loadAvailableLessons();
+				
+				// Try to load lesson from workshop level first, then from sessions
+				let lessonToLoad = workshopData.lesson || getCurrentSessionLesson(workshopData);
+				
+				if (lessonToLoad) {
+					console.log('Auto-loading lesson:', lessonToLoad, 'from workshop/session');
+					await loadLessonData(lessonToLoad);
+					// Preselect the lesson in the dropdown
+					selectedLesson = lessonToLoad;
+					showLessonSelection = true; // Show selection with preselected lesson
+				} else {
+					console.log('No lesson found in workshop or sessions');
+					// Workshop exists but no lesson - show lesson selection
+					showLessonSelection = true;
+				}
 			}
 		} catch (error) {
 			console.error('Error checking upcoming workshops:', error);
@@ -282,8 +350,11 @@
 			showLessonSelection = false;
 			
 			// Send lesson data to presentation if connected
-			if (isConnected && sessionCode && socketManager) {
-				await socketManager.sendLessonUpdate(slides, totalSlides, workshopData, workshopData?.start, workshopData?.end);
+			if (isConnected && sessionCode && slides && socketManager) {
+				console.log('Sending manually selected lesson slides to presentation:', { slidesLength: slides.length, totalSlides });
+				const startTime = workshopData?.computedStart || workshopData?.start;
+				const endTime = workshopData?.computedEnd || workshopData?.end;
+				await socketManager.sendLessonUpdate(slides, totalSlides, workshopData, startTime, endTime);
 			}
 		}
 	}
@@ -400,18 +471,26 @@
 			isConnecting = false;
 
 			// If lesson/workshop data already loaded (from URL params), send to presentation
-			if ((lessonData || workshopData) && socketManager) {
-				await socketManager.sendLessonUpdate(slides, totalSlides, workshopData, workshopData?.start, workshopData?.end);
+			if ((lessonData || workshopData) && slides && socketManager) {
+				console.log('Sending pre-loaded lesson slides to presentation:', { slidesLength: slides.length, totalSlides });
+				const startTime = workshopData?.computedStart || workshopData?.start;
+				const endTime = workshopData?.computedEnd || workshopData?.end;
+				await socketManager.sendLessonUpdate(slides, totalSlides, workshopData, startTime, endTime);
 			} else {
 				// No lesson/workshop data loaded, check for current workshop first
-				await loadAvailableLessons();
 				await checkUpcomingWorkshops();
 				
 				// If we auto-loaded a lesson from workshop, send it to presentation
-				if (lessonData && socketManager) {
-					await socketManager.sendLessonUpdate(slides, totalSlides, workshopData, workshopData?.start, workshopData?.end);
-				} else {
-						// No workshop lesson found, show selection dropdown
+				if (lessonData && slides && socketManager) {
+					console.log('Sending lesson slides to presentation:', { slidesLength: slides.length, totalSlides });
+					const startTime = workshopData?.computedStart || workshopData?.start;
+					const endTime = workshopData?.computedEnd || workshopData?.end;
+					await socketManager.sendLessonUpdate(slides, totalSlides, workshopData, startTime, endTime);
+				}
+				
+				// Always show lesson selection if we don't have workshop data
+				if (!workshopData) {
+					await loadAvailableLessons();
 					showLessonSelection = true;
 				}
 			}
@@ -516,6 +595,19 @@
 		showLessonSelection = false;
 		upcomingWorkshops = [];
 		showButtons = true; // Reset button visibility
+		updateUrlWithCode(''); // Clear URL parameter
+	}
+
+	function updateUrlWithCode(code: string) {
+		if (code && code.length === 4) {
+			const url = new URL(window.location.href);
+			url.searchParams.set('code', code.toUpperCase());
+			window.history.replaceState({}, '', url.toString());
+		} else {
+			const url = new URL(window.location.href);
+			url.searchParams.delete('code');
+			window.history.replaceState({}, '', url.toString());
+		}
 	}
 </script>
 
@@ -533,16 +625,13 @@
 				<div class="mb-4 p-3 bg-primary/10 border border-primary/20 rounded-md">
 					<div class="space-y-2">
 						<div class="text-sm">
-							{#if workshopData.schoolName}
-								<p class="text-muted-foreground">📍 {workshopData.schoolName}</p>
-							{/if}
 							{#if workshopData.group}
 								<p class="text-muted-foreground">👥 {workshopData.group}</p>
 							{/if}
-							{#if workshopData.start && workshopData.end}
+							{#if (workshopData.computedStart || workshopData.start) && (workshopData.computedEnd || workshopData.end)}
 								<p class="text-muted-foreground text-xs">
-									⏰ {new Date(workshopData.start).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' })} - 
-									{new Date(workshopData.end).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' })}
+									⏰ {new Date(workshopData.computedStart || workshopData.start).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' })} - 
+									{new Date(workshopData.computedEnd || workshopData.end).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' })}
 								</p>
 							{/if}
 						</div>
@@ -565,7 +654,10 @@
 					id="sessionCode"
 					type="text"
 					bind:value={sessionCode}
-					on:input={(e) => sessionCode = e.target.value.toUpperCase()}
+					on:input={(e) => {
+						sessionCode = e.target.value.toUpperCase();
+						updateUrlWithCode(sessionCode);
+					}}
 					on:keydown={(e) => {
 						if (e.key === 'Enter' && sessionCode.trim() && !isConnecting) {
 							connectToSession();
@@ -640,6 +732,8 @@
 							clearable={true}
 							searchable={true}
 							class="lesson-select"
+							--list-background="var(--background)"
+							--item-hover-color="var(--color-digital-amber)"
 						/>
 					</div>
 				</div>
@@ -650,16 +744,13 @@
 					<div class="flex items-center justify-between">
 						<div class="space-y-2">
 							<div class="text-sm">
-								{#if workshopData.schoolName}
-									<p class="text-muted-foreground">📍 {workshopData.schoolName}</p>
-								{/if}
 								{#if workshopData.group}
 									<p class="text-muted-foreground">👥 {workshopData.group}</p>
 								{/if}
-								{#if workshopData.start && workshopData.end}
+								{#if (workshopData.computedStart || workshopData.start) && (workshopData.computedEnd || workshopData.end)}
 									<p class="text-muted-foreground text-xs">
-										⏰ {new Date(workshopData.start).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' })} - 
-										{new Date(workshopData.end).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' })}
+										⏰ {new Date(workshopData.computedStart || workshopData.start).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' })} - 
+										{new Date(workshopData.computedEnd || workshopData.end).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' })}
 									</p>
 								{/if}
 							</div>

@@ -382,6 +382,8 @@
 				bind:value={selectedSchool}
 				placeholder="Kies een school..."
 				required
+				--list-background="var(--background)"
+				--item-hover-color="var(--color-digital-amber)"
 			/>
 		</label>
 	{/if}
@@ -392,6 +394,8 @@
 			bind:value={selectedTeacher}
 			placeholder="Kies een vakdocent (optioneel)"
 			clearable={true}
+			--list-background="var(--background)"
+			--item-hover-color="var(--color-digital-amber)"
 		/>
 	</label>
 	<div class="date-time-container">
@@ -456,6 +460,8 @@
 										on:change={(event) => updateSessionLesson(index, event.detail?.value)}
 										placeholder="Selecteer workshop"
 										clearable={true}
+										--list-background="var(--background)"
+										--item-hover-color="var(--color-digital-amber)"
 									/>
 								</div>
 								<div class="session-override-field">

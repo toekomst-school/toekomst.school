@@ -31,12 +31,43 @@ export const GET: RequestHandler = async ({ params }) => {
 		
 		const freshTeams = new Teams(freshClient);
 		
-		const members = await freshTeams.listMemberships(teamId);
-		console.log('[TEAM MEMBERS API] Members fetched successfully:', members.memberships?.length || 0);
+		const memberships = await freshTeams.listMemberships(teamId);
+		console.log('[TEAM MEMBERS API] Memberships fetched successfully:', memberships.memberships?.length || 0);
+		
+		// Fetch user details for each membership
+		const membersWithDetails = await Promise.all(
+			memberships.memberships.map(async (membership) => {
+				try {
+					const userDetails = await users.get(membership.userId);
+					return {
+						$id: membership.$id,
+						userId: membership.userId,
+						userName: userDetails.name,
+						userEmail: userDetails.email,
+						roles: membership.roles,
+						status: membership.status,
+						joined: membership.joined
+					};
+				} catch (userError) {
+					console.warn('[TEAM MEMBERS API] Failed to fetch user details for:', membership.userId);
+					return {
+						$id: membership.$id,
+						userId: membership.userId,
+						userName: 'Unknown User',
+						userEmail: 'unknown@example.com',
+						roles: membership.roles,
+						status: membership.status,
+						joined: membership.joined
+					};
+				}
+			})
+		);
+		
+		console.log('[TEAM MEMBERS API] Members with details processed:', membersWithDetails.length);
 		
 		return json({ 
 			success: true, 
-			members: members.memberships || [] 
+			members: membersWithDetails 
 		});
 	} catch (error) {
 		console.error('[TEAM MEMBERS API] Error fetching team members:', error);
@@ -51,13 +82,15 @@ export const GET: RequestHandler = async ({ params }) => {
 export const POST: RequestHandler = async ({ params, request }) => {
 	try {
 		const { teamId } = params;
-		const { userId, email, roles = ['member'] } = await request.json();
+		const { userId, email, roles = ['member'], name, role } = await request.json();
 
 		if (!userId && !email) {
 			return json({ success: false, error: 'Either userId or email is required' }, { status: 400 });
 		}
 
 		let membership;
+		let createdUser;
+
 		if (userId) {
 			// Add existing user to team
 			membership = await teams.createMembership(
@@ -65,8 +98,47 @@ export const POST: RequestHandler = async ({ params, request }) => {
 				roles,
 				userId
 			);
+		} else if (email && name && role) {
+			// Create new user and add to team
+			try {
+				console.log('[TEAM MEMBERS API] Creating new user:', name, email, role);
+				
+				// Create the user
+				createdUser = await users.create(
+					'unique()', // Let Appwrite generate unique ID
+					email,
+					undefined, // No phone
+					'defaultPassword123', // Default password - user should change this
+					name
+				);
+				
+				// Set user labels based on role
+				const userLabels = role === 'teacher' ? ['docent'] : ['student'];
+				await users.updateLabels(createdUser.$id, userLabels);
+				
+				// Set membership roles based on role
+				const membershipRoles = role === 'teacher' 
+					? ['teacher', 'owner'] 
+					: ['member', 'student'];
+				
+				// Add user to team
+				membership = await teams.createMembership(
+					teamId,
+					membershipRoles,
+					createdUser.$id
+				);
+				
+				console.log('[TEAM MEMBERS API] User created and added to team:', createdUser.$id);
+				
+			} catch (userError) {
+				console.error('[TEAM MEMBERS API] Failed to create user:', userError);
+				return json({ 
+					success: false, 
+					error: `Failed to create user: ${userError instanceof Error ? userError.message : 'Unknown error'}` 
+				}, { status: 500 });
+			}
 		} else {
-			// Invite user by email
+			// Invite user by email (existing functionality)
 			membership = await teams.createMembership(
 				teamId,
 				roles,
@@ -77,7 +149,8 @@ export const POST: RequestHandler = async ({ params, request }) => {
 		
 		return json({ 
 			success: true, 
-			membership 
+			membership,
+			createdUser
 		});
 	} catch (error) {
 		console.error('Error adding team member:', error);

@@ -21,17 +21,30 @@
 	// Classroom management
 	let classrooms: any[] = [];
 	let loadingClassrooms = false;
-	let showClassroomModal = false;
+	let showCreateModal = false;
+	let showEditModal = false;
 	let editingClassroom: any = null;
 	let classroomName = '';
 	let classroomYear = new Date().getFullYear();
 	let classroomDescription = '';
+	let teacherName = '';
+	let teacherEmail = '';
+	let studentsText = '';
 	let savingClassroom = false;
 	let classroomError = '';
+	let teamMembers: any[] = [];
+	
+	// Adding users to existing class
+	let addTeacherName = '';
+	let addTeacherEmail = '';
+	let addStudentsText = '';
+	let addingUsers = false;
+	let addUsersError = '';
 	
 	// User permissions
 	$: userRole = $user?.labels?.[0] || 'student';
 	$: canManageClassrooms = userRole === 'admin' || userRole === 'teacher' || userRole === 'vakdocent';
+	
 
 	onMount(async () => {
 		const id = get(page).params.id;
@@ -86,22 +99,65 @@
 	}
 
 	// Classroom management functions
-	function openClassroomModal(classroom: any = null) {
-		editingClassroom = classroom;
-		classroomName = classroom?.klasnaam || '';
-		classroomYear = classroom?.jaar || new Date().getFullYear();
-		classroomDescription = classroom?.description || '';
-		classroomError = '';
-		showClassroomModal = true;
-	}
-
-	function closeClassroomModal() {
-		showClassroomModal = false;
-		editingClassroom = null;
+	function openCreateModal() {
+		// Reset all fields for new classroom
 		classroomName = '';
 		classroomYear = new Date().getFullYear();
 		classroomDescription = '';
+		teacherName = '';
+		teacherEmail = '';
+		studentsText = '';
 		classroomError = '';
+		teamMembers = [];
+		editingClassroom = null;
+		showCreateModal = true;
+	}
+
+	async function openEditModal(classroom: any) {
+		// Populate fields with classroom data
+		editingClassroom = classroom;
+		classroomName = classroom.klasnaam || '';
+		classroomYear = classroom.jaar || new Date().getFullYear();
+		classroomDescription = classroom.description || '';
+		teacherName = '';
+		teacherEmail = '';
+		studentsText = '';
+		classroomError = '';
+		
+		// Reset add user fields
+		addTeacherName = '';
+		addTeacherEmail = '';
+		addStudentsText = '';
+		addUsersError = '';
+		
+		if (classroom.teamId) {
+			await loadTeamMembers(classroom.teamId);
+		}
+		
+		showEditModal = true;
+	}
+
+	async function loadTeamMembers(teamId: string) {
+		try {
+			const response = await fetch(`/api/teams/${teamId}/members`);
+			if (response.ok) {
+				const data = await response.json();
+				if (data.success) {
+					teamMembers = data.members || [];
+				}
+			}
+		} catch (error) {
+			console.error('Error loading team members:', error);
+		}
+	}
+
+	function closeCreateModal() {
+		showCreateModal = false;
+	}
+
+	function closeEditModal() {
+		showEditModal = false;
+		editingClassroom = null;
 	}
 
 	async function saveClassroom() {
@@ -114,10 +170,26 @@
 		classroomError = '';
 
 		try {
+			// Parse students from text
+			const students = studentsText.trim() 
+				? studentsText.split('\n')
+					.map(line => line.trim())
+					.filter(line => line.includes(','))
+					.map(line => {
+						const [name, email] = line.split(',').map(part => part.trim());
+						return { name, email };
+					})
+				: [];
+
 			const classroomData = {
 				klasnaam: classroomName.trim(),
 				jaar: classroomYear,
-				description: classroomDescription.trim()
+				description: classroomDescription.trim(),
+				teacher: teacherName.trim() && teacherEmail.trim() ? {
+					name: teacherName.trim(),
+					email: teacherEmail.trim()
+				} : null,
+				students: students
 			};
 
 			let response;
@@ -141,7 +213,11 @@
 
 			if (data.success) {
 				await loadClassrooms(); // Reload classrooms
-				closeClassroomModal();
+				if (editingClassroom) {
+					closeEditModal();
+				} else {
+					closeCreateModal();
+				}
 			} else {
 				classroomError = data.error || $_('messages.error');
 			}
@@ -173,6 +249,85 @@
 		} catch (error) {
 			console.error('Error deleting classroom:', error);
 			alert($_('classroom.delete_generic_error'));
+		}
+	}
+
+	async function addUsersToClass() {
+		if (!editingClassroom?.teamId) {
+			addUsersError = 'Geen team ID gevonden';
+			return;
+		}
+
+		addingUsers = true;
+		addUsersError = '';
+
+		try {
+			// Parse students from text
+			const students = addStudentsText.trim() 
+				? addStudentsText.split('\n')
+					.map(line => line.trim())
+					.filter(line => line.includes(','))
+					.map(line => {
+						const [name, email] = line.split(',').map(part => part.trim());
+						return { name, email };
+					})
+				: [];
+
+			// Add teacher if provided
+			if (addTeacherName.trim() && addTeacherEmail.trim()) {
+				const teacherData = {
+					name: addTeacherName.trim(),
+					email: addTeacherEmail.trim(),
+					role: 'teacher'
+				};
+
+				const response = await fetch(`/api/teams/${editingClassroom.teamId}/members`, {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify(teacherData)
+				});
+
+				const data = await response.json();
+				if (!data.success) {
+					console.warn('Failed to add teacher:', data.error);
+				}
+			}
+
+			// Add students
+			for (const student of students) {
+				if (student.name && student.email) {
+					const studentData = {
+						name: student.name,
+						email: student.email,
+						role: 'student'
+					};
+
+					const response = await fetch(`/api/teams/${editingClassroom.teamId}/members`, {
+						method: 'POST',
+						headers: { 'Content-Type': 'application/json' },
+						body: JSON.stringify(studentData)
+					});
+
+					const data = await response.json();
+					if (!data.success) {
+						console.warn('Failed to add student:', student.name, data.error);
+					}
+				}
+			}
+
+			// Reload team members to show new users
+			await loadTeamMembers(editingClassroom.teamId);
+			
+			// Clear form fields
+			addTeacherName = '';
+			addTeacherEmail = '';
+			addStudentsText = '';
+
+		} catch (error) {
+			console.error('Error adding users to class:', error);
+			addUsersError = 'Fout bij toevoegen van gebruikers';
+		} finally {
+			addingUsers = false;
 		}
 	}
 </script>
@@ -234,18 +389,15 @@
 			<div><span>{$_('school.client')}:</span> {school.KLANT ? $_('school.yes') : $_('school.no')}</div>
 			<div><span>{$_('school.education_structure')}:</span> {school.ONDERWIJSSTRUCTUUR}</div>
 			<details class="school-details-tab" open>
-				<summary>
-					{$_('classroom.groups_classes')}
+				<summary style="display: flex; justify-content: space-between; align-items: center;">
+					<span>{$_('classroom.groups_classes')}</span>
 					{#if canManageClassrooms}
-						<Button 
-							variant="outline" 
-							size="sm" 
-							class="ml-2"
-							on:click={(e) => { e.stopPropagation(); openClassroomModal(); }}
+						<button 
+							class="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-input bg-background hover:bg-accent hover:text-accent-foreground h-8 w-8 p-0"
+							on:click={openCreateModal}
 						>
-							<Plus size={14} />
-							{$_('classroom.new_class')}
-						</Button>
+							<Plus size={16} />
+						</button>
 					{/if}
 				</summary>
 				
@@ -254,17 +406,11 @@
 				{:else if classrooms.length === 0}
 					<div class="no-classrooms">
 						<p>{$_('classroom.no_classes')}</p>
-						{#if canManageClassrooms}
-							<Button variant="outline" on:click={() => openClassroomModal()}>
-								<Plus size={16} />
-								{$_('classroom.first_class')}
-							</Button>
-						{/if}
 					</div>
 				{:else}
 					<div class="classrooms-grid">
 						{#each classrooms as classroom}
-							<div class="classroom-card">
+							<div class="classroom-card cursor-pointer" on:click={() => openEditModal(classroom)}>
 								<div class="classroom-header">
 									<div class="classroom-name">
 										<Users size={16} />
@@ -275,14 +421,14 @@
 										<div class="classroom-actions">
 											<button 
 												class="action-btn edit-btn"
-												on:click={() => openClassroomModal(classroom)}
+												on:click|stopPropagation={() => openEditModal(classroom)}
 												title={$_('classroom.edit_class')}
 											>
 												<Edit size={14} />
 											</button>
 											<button 
 												class="action-btn delete-btn"
-												on:click={() => deleteClassroom(classroom)}
+												on:click|stopPropagation={() => deleteClassroom(classroom)}
 												title={$_('classroom.delete_class')}
 											>
 												<Trash2 size={14} />
@@ -324,82 +470,6 @@
 	</div>
 {/if}
 
-<!-- Classroom Modal -->
-<Dialog.Root bind:open={showClassroomModal}>
-	<Dialog.Content class="sm:max-w-[425px] bg-[var(--background)] text-foreground border border-border">
-		<Dialog.Header>
-			<Dialog.Title>
-				{editingClassroom ? $_('classroom.edit_class') : $_('classroom.create_new_class')}
-			</Dialog.Title>
-			<Dialog.Description>
-				{editingClassroom ? $_('classroom.edit_class_data') : $_('classroom.create_class_description')}
-			</Dialog.Description>
-		</Dialog.Header>
-		
-		<form on:submit|preventDefault={saveClassroom}>
-			<div class="grid gap-4 py-4">
-				<div class="grid grid-cols-4 items-center gap-4">
-					<label for="classroomName" class="text-right">{$_('classroom.class_name')}</label>
-					<input
-						id="classroomName"
-						type="text"
-						bind:value={classroomName}
-						placeholder="bijv. 6A, 1HAVO, etc."
-						class="col-span-3 px-3 py-2 border rounded-md"
-						required
-					/>
-				</div>
-				
-				<div class="grid grid-cols-4 items-center gap-4">
-					<label for="classroomYear" class="text-right">{$_('classroom.school_year')}</label>
-					<input
-						id="classroomYear"
-						type="number"
-						bind:value={classroomYear}
-						min="2020"
-						max="2030"
-						class="col-span-3 px-3 py-2 border rounded-md"
-						required
-					/>
-				</div>
-				
-				<div class="grid grid-cols-4 items-center gap-4">
-					<label for="classroomDescription" class="text-right">{$_('forms.description')}</label>
-					<textarea
-						id="classroomDescription"
-						bind:value={classroomDescription}
-						placeholder={$_('forms.description') + '...'}
-						class="col-span-3 px-3 py-2 border rounded-md"
-						rows="3"
-					></textarea>
-				</div>
-			</div>
-			
-			{#if classroomError}
-				<div class="mb-4 p-3 bg-red-100 border border-red-300 rounded-md text-red-800">
-					{classroomError}
-				</div>
-			{/if}
-			
-			<Dialog.Footer>
-				<Button 
-					type="button" 
-					variant="outline" 
-					on:click={closeClassroomModal}
-					disabled={savingClassroom}
-				>
-					{$_('forms.cancel')}
-				</Button>
-				<Button 
-					type="submit" 
-					disabled={savingClassroom}
-				>
-					{savingClassroom ? $_('messages.saving') : (editingClassroom ? $_('forms.update') : $_('forms.create'))}
-				</Button>
-			</Dialog.Footer>
-		</form>
-	</Dialog.Content>
-</Dialog.Root>
 
 <style>
 	.school-view-card {
@@ -642,3 +712,395 @@
 		}
 	}
 </style>
+
+<!-- Create Classroom Dialog -->
+<Dialog.Root bind:open={showCreateModal}>
+	<Dialog.Content class="sm:max-w-[1200px] max-h-[90vh] overflow-y-auto">
+		<Dialog.Header>
+			<Dialog.Title>Nieuwe Klas Maken</Dialog.Title>
+			<Dialog.Description>Vul de onderstaande gegevens in om een nieuwe klas aan te maken.</Dialog.Description>
+		</Dialog.Header>
+		
+		<form on:submit|preventDefault={saveClassroom} class="space-y-4">
+			<div class="grid grid-cols-2 gap-4">
+				<div class="space-y-2">
+					<label for="classroomName" class="text-sm font-medium">Klasnaam</label>
+					<input
+						id="classroomName"
+						type="text"
+						bind:value={classroomName}
+						placeholder="bijv. 6A, 1HAVO, etc."
+						class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+						required
+					/>
+				</div>
+				
+				<div class="space-y-2">
+					<label for="classroomYear" class="text-sm font-medium">Schooljaar</label>
+					<input
+						id="classroomYear"
+						type="number"
+						bind:value={classroomYear}
+						min="2020"
+						max="2030"
+						class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+						required
+					/>
+				</div>
+			</div>
+			
+			<div class="space-y-2">
+				<label for="classroomDescription" class="text-sm font-medium">Beschrijving</label>
+				<textarea
+					id="classroomDescription"
+					bind:value={classroomDescription}
+					placeholder="Beschrijving van de klas..."
+					class="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+					rows="3"
+				></textarea>
+			</div>
+
+			<!-- Teacher Section -->
+			<div class="border-t pt-4">
+				<h3 class="text-sm font-medium mb-3">Docent toevoegen</h3>
+				<div class="grid grid-cols-2 gap-4">
+					<div class="space-y-2">
+						<label for="teacherName" class="text-sm font-medium">Naam</label>
+						<input
+							id="teacherName"
+							type="text"
+							bind:value={teacherName}
+							placeholder="Naam van de docent"
+							class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+						/>
+					</div>
+					<div class="space-y-2">
+						<label for="teacherEmail" class="text-sm font-medium">Email</label>
+						<input
+							id="teacherEmail"
+							type="email"
+							bind:value={teacherEmail}
+							placeholder="docent@school.nl"
+							class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+						/>
+					</div>
+				</div>
+			</div>
+
+			<!-- Students Section -->
+			<div class="border-t pt-4">
+				<h3 class="text-sm font-medium mb-3">Leerlingen toevoegen</h3>
+				<div class="space-y-2">
+					<label for="studentsText" class="text-sm font-medium">Leerlingen</label>
+					<textarea
+						id="studentsText"
+						bind:value={studentsText}
+						placeholder="Jan de Vries,jan.devries@student.nl&#10;Marie Jansen,marie.jansen@student.nl&#10;..."
+						class="flex min-h-[120px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+						rows="6"
+					></textarea>
+					<p class="text-xs text-muted-foreground">
+						Voer elke leerling in op een nieuwe regel in het formaat: "naam,email"
+					</p>
+				</div>
+			</div>
+			
+			{#if classroomError}
+				<div class="rounded-md bg-destructive/15 p-3 text-sm text-destructive">
+					{classroomError}
+				</div>
+			{/if}
+			
+			<Dialog.Footer>
+				<Button type="submit" disabled={savingClassroom}>
+					{savingClassroom ? $_('messages.saving') : $_('forms.create')}
+				</Button>
+			</Dialog.Footer>
+		</form>
+	</Dialog.Content>
+</Dialog.Root>
+
+<!-- Edit Classroom Dialog -->
+<Dialog.Root bind:open={showEditModal}>
+	<Dialog.Content class="sm:max-w-[1200px] max-h-[90vh] overflow-y-auto">
+		<Dialog.Header>
+			<Dialog.Title>Klas Bewerken</Dialog.Title>
+			<Dialog.Description>Bewerk de gegevens van de klas.</Dialog.Description>
+		</Dialog.Header>
+		
+		<div class="lg:grid lg:grid-cols-2 lg:gap-6">
+			<!-- Form Column -->
+			<div class="lg:col-span-1">
+				<form on:submit|preventDefault={saveClassroom} class="space-y-4">
+					<div class="grid grid-cols-2 gap-4">
+						<div class="space-y-2">
+							<label for="editClassroomName" class="text-sm font-medium">Klasnaam</label>
+							<input
+								id="editClassroomName"
+								type="text"
+								bind:value={classroomName}
+								placeholder="bijv. 6A, 1HAVO, etc."
+								class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+								required
+							/>
+						</div>
+						
+						<div class="space-y-2">
+							<label for="editClassroomYear" class="text-sm font-medium">Schooljaar</label>
+							<input
+								id="editClassroomYear"
+								type="number"
+								bind:value={classroomYear}
+								min="2020"
+								max="2030"
+								class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+								required
+							/>
+						</div>
+					</div>
+					
+					<div class="space-y-2">
+						<label for="editClassroomDescription" class="text-sm font-medium">Beschrijving</label>
+						<textarea
+							id="editClassroomDescription"
+							bind:value={classroomDescription}
+							placeholder="Beschrijving van de klas..."
+							class="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+							rows="3"
+						></textarea>
+					</div>
+					
+					{#if classroomError}
+						<div class="rounded-md bg-destructive/15 p-3 text-sm text-destructive">
+							{classroomError}
+						</div>
+					{/if}
+					
+					<Dialog.Footer>
+						<Button type="submit" disabled={savingClassroom}>
+							{savingClassroom ? $_('messages.saving') : $_('forms.update')}
+						</Button>
+					</Dialog.Footer>
+				</form>
+			</div>
+
+			<!-- Members Column (Desktop Only) -->
+			<div class="hidden lg:block lg:col-span-1 border-l pl-6">
+				<h3 class="text-lg font-medium mb-4">Klas Leden</h3>
+				
+				<!-- Current Members -->
+				{#if teamMembers.length > 0}
+					<div class="space-y-4 mb-6">
+						<!-- Teachers -->
+						{#if teamMembers.length > 0}
+							{@const teachers = teamMembers.filter(member => member.roles.includes('owner') || member.roles.includes('admin') || member.roles.includes('teacher'))}
+							{#if teachers.length > 0}
+								<div>
+									<h4 class="text-sm font-medium text-muted-foreground mb-2">Docenten</h4>
+									<div class="space-y-2">
+										{#each teachers as teacher}
+											<div class="flex items-center gap-2 p-2 bg-muted rounded-md">
+												<Users size={14} />
+												<div class="flex-1">
+													<div class="text-sm font-medium">{teacher.userName}</div>
+													<div class="text-xs text-muted-foreground">{teacher.userEmail}</div>
+												</div>
+											</div>
+										{/each}
+									</div>
+								</div>
+							{/if}
+						{/if}
+
+						<!-- Students -->
+						{#if teamMembers.length > 0}
+							{@const students = teamMembers.filter(member => member.roles.includes('member') || member.roles.includes('student'))}
+							{#if students.length > 0}
+								<div>
+									<h4 class="text-sm font-medium text-muted-foreground mb-2">Leerlingen ({students.length})</h4>
+									<div class="space-y-1 max-h-60 overflow-y-auto">
+										{#each students as student}
+											<div class="flex items-center gap-2 p-2 bg-muted/50 rounded-md">
+												<div class="w-2 h-2 bg-primary rounded-full"></div>
+												<div class="flex-1">
+													<div class="text-sm">{student.userName}</div>
+													<div class="text-xs text-muted-foreground">{student.userEmail}</div>
+												</div>
+											</div>
+										{/each}
+									</div>
+								</div>
+							{/if}
+						{/if}
+					</div>
+				{:else}
+					<div class="text-center text-muted-foreground text-sm mb-6">
+						Geen klasleden gevonden
+					</div>
+				{/if}
+
+				<!-- Add Users Form -->
+				<div class="border rounded-lg p-4 bg-muted/30">
+					<h4 class="text-sm font-medium mb-3">Gebruikers Toevoegen</h4>
+					
+					<!-- Add Teacher -->
+					<div class="mb-4">
+						<h5 class="text-xs font-medium text-muted-foreground mb-2">Docent Toevoegen</h5>
+						<div class="space-y-2">
+							<input
+								type="text"
+								bind:value={addTeacherName}
+								placeholder="Naam van de docent"
+								class="flex h-8 w-full rounded-md border border-input bg-background px-2 py-1 text-xs"
+							/>
+							<input
+								type="email"
+								bind:value={addTeacherEmail}
+								placeholder="docent@school.nl"
+								class="flex h-8 w-full rounded-md border border-input bg-background px-2 py-1 text-xs"
+							/>
+						</div>
+					</div>
+					
+					<!-- Add Students -->
+					<div class="mb-4">
+						<h5 class="text-xs font-medium text-muted-foreground mb-2">Leerlingen Toevoegen</h5>
+						<textarea
+							bind:value={addStudentsText}
+							placeholder="naam,email&#10;naam2,email2"
+							class="flex min-h-[80px] w-full rounded-md border border-input bg-background px-2 py-1 text-xs"
+							rows="3"
+						></textarea>
+						<p class="text-xs text-muted-foreground mt-1">
+							Formaat: "naam,email" per regel
+						</p>
+					</div>
+					
+					{#if addUsersError}
+						<div class="rounded-md bg-destructive/15 p-2 text-xs text-destructive mb-3">
+							{addUsersError}
+						</div>
+					{/if}
+					
+					<Button 
+						size="sm" 
+						on:click={addUsersToClass} 
+						disabled={addingUsers || (!addTeacherName && !addStudentsText)}
+						class="w-full"
+					>
+						{addingUsers ? 'Toevoegen...' : 'Gebruikers Toevoegen'}
+					</Button>
+				</div>
+			</div>
+
+			<!-- Members Section (Mobile Only) -->
+			<div class="lg:hidden mt-6 border-t pt-6">
+				<h3 class="text-lg font-medium mb-4">Klas Leden</h3>
+				
+				<!-- Current Members -->
+				{#if teamMembers.length > 0}
+					<div class="space-y-4 mb-6">
+						<!-- Teachers -->
+						{#if teamMembers.length > 0}
+							{@const teachers = teamMembers.filter(member => member.roles.includes('owner') || member.roles.includes('admin') || member.roles.includes('teacher'))}
+							{#if teachers.length > 0}
+								<div>
+									<h4 class="text-sm font-medium text-muted-foreground mb-2">Docenten</h4>
+									<div class="space-y-2">
+										{#each teachers as teacher}
+											<div class="flex items-center gap-2 p-2 bg-muted rounded-md">
+												<Users size={14} />
+												<div class="flex-1">
+													<div class="text-sm font-medium">{teacher.userName}</div>
+													<div class="text-xs text-muted-foreground">{teacher.userEmail}</div>
+												</div>
+											</div>
+										{/each}
+									</div>
+								</div>
+							{/if}
+						{/if}
+
+						<!-- Students -->
+						{#if teamMembers.length > 0}
+							{@const students = teamMembers.filter(member => member.roles.includes('member') || member.roles.includes('student'))}
+							{#if students.length > 0}
+								<div>
+									<h4 class="text-sm font-medium text-muted-foreground mb-2">Leerlingen ({students.length})</h4>
+									<div class="space-y-1 max-h-60 overflow-y-auto">
+										{#each students as student}
+											<div class="flex items-center gap-2 p-2 bg-muted/50 rounded-md">
+												<div class="w-2 h-2 bg-primary rounded-full"></div>
+												<div class="flex-1">
+													<div class="text-sm">{student.userName}</div>
+													<div class="text-xs text-muted-foreground">{student.userEmail}</div>
+												</div>
+											</div>
+										{/each}
+									</div>
+								</div>
+							{/if}
+						{/if}
+					</div>
+				{:else}
+					<div class="text-center text-muted-foreground text-sm mb-6">
+						Geen klasleden gevonden
+					</div>
+				{/if}
+
+				<!-- Add Users Form -->
+				<div class="border rounded-lg p-4 bg-muted/30">
+					<h4 class="text-sm font-medium mb-3">Gebruikers Toevoegen</h4>
+					
+					<!-- Add Teacher -->
+					<div class="mb-4">
+						<h5 class="text-xs font-medium text-muted-foreground mb-2">Docent Toevoegen</h5>
+						<div class="space-y-2">
+							<input
+								type="text"
+								bind:value={addTeacherName}
+								placeholder="Naam van de docent"
+								class="flex h-8 w-full rounded-md border border-input bg-background px-2 py-1 text-xs"
+							/>
+							<input
+								type="email"
+								bind:value={addTeacherEmail}
+								placeholder="docent@school.nl"
+								class="flex h-8 w-full rounded-md border border-input bg-background px-2 py-1 text-xs"
+							/>
+						</div>
+					</div>
+					
+					<!-- Add Students -->
+					<div class="mb-4">
+						<h5 class="text-xs font-medium text-muted-foreground mb-2">Leerlingen Toevoegen</h5>
+						<textarea
+							bind:value={addStudentsText}
+							placeholder="naam,email&#10;naam2,email2"
+							class="flex min-h-[80px] w-full rounded-md border border-input bg-background px-2 py-1 text-xs"
+							rows="3"
+						></textarea>
+						<p class="text-xs text-muted-foreground mt-1">
+							Formaat: "naam,email" per regel
+						</p>
+					</div>
+					
+					{#if addUsersError}
+						<div class="rounded-md bg-destructive/15 p-2 text-xs text-destructive mb-3">
+							{addUsersError}
+						</div>
+					{/if}
+					
+					<Button 
+						size="sm" 
+						on:click={addUsersToClass} 
+						disabled={addingUsers || (!addTeacherName && !addStudentsText)}
+						class="w-full"
+					>
+						{addingUsers ? 'Toevoegen...' : 'Gebruikers Toevoegen'}
+					</Button>
+				</div>
+			</div>
+		</div>
+	</Dialog.Content>
+</Dialog.Root>

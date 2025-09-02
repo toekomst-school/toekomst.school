@@ -1,5 +1,5 @@
 import { json } from '@sveltejs/kit';
-import { Client, Databases, Users, Query } from 'node-appwrite';
+import { Client, Databases, Users, Teams, Query } from 'node-appwrite';
 import type { RequestHandler } from './$types';
 import type { AnnouncementTarget } from '$lib/types/announcements';
 import dotenv from 'dotenv';
@@ -13,6 +13,7 @@ const serverClient = new Client()
 
 const databases = new Databases(serverClient);
 const users = new Users(serverClient);
+const teams = new Teams(serverClient);
 
 // GET - Get available targets for user
 export const GET: RequestHandler = async ({ request, url }) => {
@@ -34,85 +35,105 @@ export const GET: RequestHandler = async ({ request, url }) => {
 		const targets: AnnouncementTarget[] = [];
 		const userLabels = await getUserLabels(userId);
 
-		// Get user's teams
-		const teamsResponse = await databases.listDocuments('main', 'teams', [
-			Query.equal('members', userId),
-			Query.limit(100)
-		]);
-
-		for (const team of teamsResponse.documents) {
-			targets.push({
-				id: team.$id,
-				name: team.name || 'Team',
-				type: 'team',
-				memberCount: team.members?.length || 0,
-				description: team.description
-			});
+		// Get user's teams using Appwrite Teams API
+		try {
+			const teamsResponse = await teams.list();
+			
+			for (const team of teamsResponse.teams) {
+				// Check if user is a member of this team
+				try {
+					const memberships = await teams.listMemberships(team.$id);
+					const isMember = memberships.memberships.some(membership => membership.userId === userId);
+					
+					if (isMember) {
+						targets.push({
+							id: team.$id,
+							name: team.name || 'Team',
+							type: 'team',
+							memberCount: team.total || 0,
+							description: `Team: ${team.name}`
+						});
+					}
+				} catch (membershipError) {
+					console.warn(`Could not check membership for team ${team.$id}:`, membershipError);
+					// Continue to next team
+				}
+			}
+		} catch (error) {
+			console.error('Error fetching teams:', error);
+			// Continue without teams - don't fail the entire request
 		}
 
-		// Get user's classes (if teacher or has planning role)
+		// Get user's classes (classes are also teams but with different purpose)
+		// For now, we'll treat all teams as potential classes - could be refined later with metadata
 		if (userLabels.includes('teacher') || userLabels.includes('planning') || userLabels.includes('admin')) {
-			let classQueries = [Query.limit(100)];
-			
-			// If not admin, filter by user's classes
-			if (!userLabels.includes('admin')) {
-				classQueries.push(Query.equal('teacherId', userId));
-			}
-
-			const classesResponse = await databases.listDocuments('main', 'classes', classQueries);
-
-			for (const classDoc of classesResponse.documents) {
-				// Get student count from associated team
-				let memberCount = 0;
-				try {
-					if (classDoc.teamId) {
-						const classTeam = await databases.getDocument('main', 'teams', classDoc.teamId);
-						memberCount = classTeam.members?.length || 0;
+			try {
+				const allTeamsResponse = await teams.list();
+				
+				for (const team of allTeamsResponse.teams) {
+					// Check if user has access to this team (either as member or if admin)
+					let hasAccess = userLabels.includes('admin');
+					
+					if (!hasAccess) {
+						try {
+							const memberships = await teams.listMemberships(team.$id);
+							hasAccess = memberships.memberships.some(membership => membership.userId === userId);
+						} catch (membershipError) {
+							// Continue to next team if can't check membership
+							continue;
+						}
 					}
-				} catch (error) {
-					// Team might not exist
+					
+					if (hasAccess) {
+						// Only add as class if it's not already added as a team
+						const alreadyAdded = targets.some(target => target.id === team.$id);
+						if (!alreadyAdded) {
+							targets.push({
+								id: team.$id,
+								name: team.name || 'Class',
+								type: 'class',
+								memberCount: team.total || 0,
+								description: `Class: ${team.name}`
+							});
+						}
+					}
 				}
-
-				targets.push({
-					id: classDoc.$id,
-					name: classDoc.name || 'Class',
-					type: 'class',
-					memberCount,
-					description: `${classDoc.schoolName || 'School'} - ${classDoc.name || 'Class'}`
-				});
+			} catch (error) {
+				console.error('Error fetching classes (teams):', error);
+				// Continue without classes - don't fail the entire request
 			}
 		}
 
 		// Get schools (if admin or planning)
 		if (userLabels.includes('admin') || userLabels.includes('planning')) {
-			const schoolsResponse = await databases.listDocuments('scholen', 'school', [
-				Query.equal('KLANT', true),
-				Query.limit(100)
-			]);
+			try {
+				const schoolsResponse = await databases.listDocuments('scholen', 'school', [
+					Query.equal('KLANT', true),
+					Query.limit(100)
+				]);
 
-			for (const school of schoolsResponse.documents) {
-				// Get total member count across all teams in school
-				let memberCount = 0;
-				try {
-					const schoolTeams = await databases.listDocuments('main', 'teams', [
-						Query.equal('schoolId', school.$id),
-						Query.limit(100)
-					]);
-					
-					memberCount = schoolTeams.documents.reduce((total, team) => {
-						return total + (team.members?.length || 0);
-					}, 0);
-				} catch (error) {
-					// School teams might not exist
+				for (const school of schoolsResponse.documents) {
+					// Get total member count across all teams associated with school
+					let memberCount = 0;
+					try {
+						// Since teams are now in Appwrite Teams, we can't easily filter by schoolId
+						// For now, just use 0 or estimate based on school size
+						memberCount = 0; // Could be enhanced later with team metadata
+					} catch (error) {
+						// Continue without member count
+					}
+
+					targets.push({
+						id: school.$id,
+						name: school.NAAM || school.name || 'School',
+						type: 'school',
+						memberCount,
+						description: `School-wide announcements`
+					});
 				}
-
-				targets.push({
-					id: school.$id,
-					name: school.NAAM || school.name || 'School',
-					type: 'school',
-					memberCount,
-					description: `School-wide announcements`
-				});
+			} catch (error) {
+				console.error('Error fetching schools:', error);
+				// Continue without schools - don't fail the entire request
 			}
 		}
 

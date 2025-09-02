@@ -221,6 +221,8 @@
 		placeholder="Alle provincies"
 		clearable={true}
 		class="w-[200px]"
+		--list-background="var(--background)"
+		--item-hover-color="var(--color-digital-amber)"
 	/>
 	<SvelteSelect
 		items={plaatsnamen}
@@ -228,6 +230,8 @@
 		placeholder="Alle plaatsen"
 		clearable={true}
 		class="w-[200px]"
+		--list-background="var(--background)"
+		--item-hover-color="var(--color-digital-amber)"
 	/>
 	<input type="text" placeholder="Zoek op naam of adres" bind:value={search} />
 	<button on:click={openAdd}>+ School toevoegen</button>

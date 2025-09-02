@@ -1,6 +1,7 @@
 import { json } from '@sveltejs/kit';
 import { Client, Teams, Users } from 'node-appwrite';
 import type { RequestHandler } from './$types';
+import type { TeamCreateRequest } from '$lib/types/teams';
 import dotenv from 'dotenv';
 dotenv.config();
 
@@ -23,6 +24,18 @@ async function canAccessTeams(userId: string): Promise<boolean> {
 		return userLabels.includes('admin') || userLabels.includes('planning') || userLabels.includes('vakdocent');
 	} catch (error) {
 		console.error('[TEAMS API] Error checking user permissions:', error);
+		return false;
+	}
+}
+
+// Helper function to check if user is super admin
+async function isSuperAdmin(userId: string): Promise<boolean> {
+	try {
+		const user = await users.get(userId);
+		const userLabels = user.labels || [];
+		return userLabels.includes('admin');
+	} catch (error) {
+		console.error('[TEAMS API] Error checking super admin permissions:', error);
 		return false;
 	}
 }
@@ -77,7 +90,8 @@ export const GET: RequestHandler = async ({ request, url }) => {
 // POST: Create new team
 export const POST: RequestHandler = async ({ request }) => {
 	try {
-		const { name, description, adminUserId } = await request.json();
+		const teamData: TeamCreateRequest = await request.json();
+		const { name, adminUserId, description, location, phoneNumber, emailAddress, type, capacity, isPublic } = teamData;
 
 		if (!name || !adminUserId) {
 			return json({ success: false, error: 'Missing required fields' }, { status: 400 });
@@ -89,12 +103,33 @@ export const POST: RequestHandler = async ({ request }) => {
 			return json({ success: false, error: 'Only admin, planning, and vakdocent can create teams' }, { status: 403 });
 		}
 
+		// Check if user is super admin for enhanced features
+		const isUserSuperAdmin = await isSuperAdmin(adminUserId);
+
 		// Create team
 		const team = await teams.create(
 			'unique()', // Let Appwrite generate unique ID
 			name,
 			['owner'] // Default roles
 		);
+
+		// Prepare team preferences with enhanced data
+		const teamPrefs: any = {
+			type: type || 'workforce',
+			description: description || ''
+		};
+
+		// Add enhanced fields only if user is super admin
+		if (isUserSuperAdmin) {
+			if (location) teamPrefs.location = location;
+			if (phoneNumber) teamPrefs.phoneNumber = phoneNumber;
+			if (emailAddress) teamPrefs.emailAddress = emailAddress;
+			if (capacity) teamPrefs.capacity = capacity;
+			if (typeof isPublic === 'boolean') teamPrefs.isPublic = isPublic;
+		}
+
+		// Set team preferences with enhanced data
+		await teams.updatePrefs(team.$id, teamPrefs);
 
 		// Add the admin user as team owner
 		await teams.createMembership(
@@ -107,7 +142,7 @@ export const POST: RequestHandler = async ({ request }) => {
 			success: true, 
 			team: {
 				...team,
-				description
+				prefs: teamPrefs
 			}
 		});
 	} catch (error) {

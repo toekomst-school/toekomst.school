@@ -4,7 +4,7 @@
 		{ titleKey: 'nav.planning', url: '/planning', icon: 'calendar' },
 		{ titleKey: 'nav.connect', url: '/connect', icon: 'presentation' },
 		{ titleKey: 'nav.lessons', url: '/cursussen', icon: 'bookOpen' },
-		{ titleKey: 'nav.game', url: '/game', icon: 'gamepad' }
+		// { titleKey: 'nav.game', url: '/game', icon: 'gamepad' }
 	];
 </script>
 

@@ -7,6 +7,7 @@ import type {
 	AnnouncementCreateRequest 
 } from '$lib/types/announcements';
 import { user } from '$lib/stores/auth.js';
+import { offlineActions, isOffline } from '$lib/stores/offline';
 
 // Core announcement stores
 export const announcements = writable<Announcement[]>([]);
@@ -268,6 +269,33 @@ export const announcementActions = {
 			const userId = getCurrentUserId();
 			if (!userId) {
 				throw new Error('User not authenticated');
+			}
+
+			// Check if offline
+			if (get(isOffline)) {
+				// Store action for later sync
+				offlineActions.addPendingAction('mark_read', {
+					announcementId: id,
+					userId: userId
+				});
+				
+				// Update local state immediately for better UX
+				announcements.update(items => 
+					items.map(item => {
+						if (item.$id === id && !item.readBy.includes(userId)) {
+							return { ...item, readBy: [...item.readBy, userId] };
+						}
+						return item;
+					})
+				);
+
+				// Update stats
+				announcementStats.update(stats => ({
+					...stats,
+					unread: Math.max(0, stats.unread - 1)
+				}));
+				
+				return;
 			}
 
 			const response = await fetch(`/api/announcements/${id}`, {

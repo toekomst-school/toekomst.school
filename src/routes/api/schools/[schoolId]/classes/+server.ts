@@ -1,5 +1,5 @@
 import { json } from '@sveltejs/kit';
-import { Client, Databases, Teams, Query } from 'node-appwrite';
+import { Client, Databases, Teams, Users, Query } from 'node-appwrite';
 import type { RequestHandler } from './$types';
 import dotenv from 'dotenv';
 dotenv.config();
@@ -12,6 +12,7 @@ const serverClient = new Client()
 
 const databases = new Databases(serverClient);
 const teams = new Teams(serverClient);
+const users = new Users(serverClient);
 const SCHOOLS_DB = 'scholen';
 const SCHOOL_COLLECTION = 'school';
 
@@ -112,7 +113,7 @@ export const GET: RequestHandler = async ({ params, url }) => {
 export const POST: RequestHandler = async ({ params, request }) => {
 	try {
 		const { schoolId } = params;
-		const { klasnaam, jaar, docenten, description } = await request.json();
+		const { klasnaam, jaar, description, teacher, students } = await request.json();
 		
 		console.log('[SCHOOL CLASSES API] Creating class for school:', schoolId, 'class:', klasnaam);
 
@@ -170,14 +171,58 @@ export const POST: RequestHandler = async ({ params, request }) => {
 			console.warn('[SCHOOL CLASSES API] Failed to set team preferences:', prefsError);
 		}
 
-		// Add teachers to the team if provided
-		if (docenten && docenten.length > 0) {
-			for (const teacherId of docenten) {
+		// Create teacher user if provided
+		let teacherId = null;
+		if (teacher && teacher.name && teacher.email) {
+			try {
+				console.log('[SCHOOL CLASSES API] Creating teacher user:', teacher.name, teacher.email);
+				const teacherUser = await users.create(
+					'unique()', // Let Appwrite generate unique ID
+					teacher.email,
+					undefined, // No phone
+					'defaultPassword123', // Default password - teacher should change this
+					teacher.name
+				);
+				
+				// Set teacher labels
+				await users.updateLabels(teacherUser.$id, ['docent']);
+				
+				// Add teacher to team
+				await teams.createMembership(classTeam.$id, ['teacher', 'owner'], teacherUser.$id);
+				teacherId = teacherUser.$id;
+				
+				console.log('[SCHOOL CLASSES API] Teacher created and added to team:', teacherUser.$id);
+			} catch (teacherError) {
+				console.warn('[SCHOOL CLASSES API] Failed to create teacher:', teacherError);
+			}
+		}
+
+		// Create student users if provided
+		const createdStudents = [];
+		if (students && students.length > 0) {
+			for (const student of students) {
 				try {
-					await teams.createMembership(classTeam.$id, ['teacher'], teacherId);
-					console.log('[SCHOOL CLASSES API] Teacher added to team:', teacherId);
-				} catch (membershipError) {
-					console.warn('[SCHOOL CLASSES API] Failed to add teacher to team:', teacherId, membershipError);
+					if (student.name && student.email) {
+						console.log('[SCHOOL CLASSES API] Creating student user:', student.name, student.email);
+						const studentUser = await users.create(
+							'unique()', // Let Appwrite generate unique ID
+							student.email,
+							undefined, // No phone
+							'defaultPassword123', // Default password - student should change this
+							student.name
+						);
+						
+						// Set student labels
+						await users.updateLabels(studentUser.$id, ['student']);
+						
+						// Add student to team
+						await teams.createMembership(classTeam.$id, ['member', 'student'], studentUser.$id);
+						createdStudents.push(studentUser.$id);
+						
+						console.log('[SCHOOL CLASSES API] Student created and added to team:', studentUser.$id);
+					}
+				} catch (studentError) {
+					console.warn('[SCHOOL CLASSES API] Failed to create student:', student.name, studentError);
 				}
 			}
 		}
@@ -191,10 +236,10 @@ export const POST: RequestHandler = async ({ params, request }) => {
 			description: description || '',
 			schoolId: schoolId,
 			schoolNaam: school.NAAM,
-			leerlingen: [],
-			docenten: docenten || [],
-			studentCount: 0,
-			teacherCount: docenten?.length || 0,
+			leerlingen: createdStudents,
+			docenten: teacherId ? [teacherId] : [],
+			studentCount: createdStudents.length,
+			teacherCount: teacherId ? 1 : 0,
 			createdAt: new Date().toISOString(),
 			teamName: teamName
 		};

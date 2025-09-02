@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { get } from 'svelte/store';
 	import Calendar from '@lucide/svelte/icons/calendar';
 	import Clock from '@lucide/svelte/icons/clock';
 	import Users from '@lucide/svelte/icons/users';
@@ -20,6 +21,12 @@
 		announcementActions, 
 		isLoading as announcementsLoading 
 	} from '$lib/stores/announcements';
+	import { offlineActions, offlineState, isOffline, syncStatus } from '$lib/stores/offline';
+	import { teamStore } from '$lib/stores/team';
+	import Clock2 from '@lucide/svelte/icons/clock-2';
+	import Coffee from '@lucide/svelte/icons/coffee';
+	import Play from '@lucide/svelte/icons/play';
+	import CheckCircle2 from '@lucide/svelte/icons/check-circle-2';
 
 	const databaseId = 'lessen';
 	const collectionId = 'planning';
@@ -81,6 +88,38 @@
 
 	onMount(async () => {
 		try {
+			// Try to load cached data first if offline, before attempting network requests
+			if ($isOffline) {
+				const cachedData = offlineActions.loadDashboardData();
+				if (cachedData) {
+					console.log('Loading cached dashboard data for offline use');
+					
+					// Load cached workshops
+					upcomingWorkshops = cachedData.workshops || [];
+					
+					// Load cached schools
+					schoolOptions = cachedData.schools || [];
+					
+					// Load cached announcements
+					if (cachedData.announcements) {
+						announcements.set(cachedData.announcements);
+					}
+					
+					// Try to get user info, but don't fail if offline
+					try {
+						currentUser = await account.get();
+					} catch (error) {
+						console.log('Cannot get user info while offline, using cached data anyway');
+						// We'll set a placeholder user ID from cached data
+						currentUser = { $id: cachedData.userId };
+					}
+					
+					loading = false;
+					return;
+				}
+			}
+			
+			// Get current user when online
 			currentUser = await account.get();
 			
 			// Fetch schools first
@@ -93,42 +132,171 @@
 				label: school.NAAM || school.$id
 			}));
 			
-			const now = new Date().toISOString();
+			// Load teams for team initials display - BEFORE loading workshops
+			try {
+				const response = await fetch(`/api/teams?userId=${encodeURIComponent(currentUser.$id)}`);
+				const data = await response.json();
+				
+				if (data.success && data.teams) {
+					console.log('Dashboard: Loaded teams:', data.teams.map(t => ({ id: t.$id, name: t.name })));
+					teamStore.setTeams(data.teams);
+				} else {
+					console.warn('Dashboard: Failed to load teams:', data);
+				}
+			} catch (error) {
+				console.warn('Failed to load teams for dashboard:', error);
+			}
+			
+			// Use start of today and end of week to include workshops within next 7 days
+			const startOfToday = new Date();
+			startOfToday.setHours(0, 0, 0, 0);
+			const startOfTodayISO = startOfToday.toISOString();
+			
+			const endOfWeek = new Date();
+			endOfWeek.setDate(startOfToday.getDate() + 7);
+			endOfWeek.setHours(23, 59, 59, 999);
+			const endOfWeekISO = endOfWeek.toISOString();
+			
+			console.log('Dashboard: Fetching workshops from', startOfTodayISO, 'to', endOfWeekISO, 'for user', currentUser.$id);
+			
 			const response = await databases.listDocuments(
 				databaseId,
 				collectionId,
 				[
 					Query.equal('teacher', currentUser.$id),
-					Query.greaterThan('start', now),
+					Query.greaterThanEqual('start', startOfTodayISO),
+					Query.lessThanEqual('start', endOfWeekISO),
 					Query.orderAsc('start'),
-					Query.limit(10)
+					Query.limit(25)
 				]
 			);
 			
-			// Transform Appwrite data to match UI structure
-			upcomingWorkshops = response.documents.map(doc => ({
-				id: doc.$id,
-				title: getWorkshopTitle(doc),
-				schoolName: getSchoolName(doc.school),
-				date: new Date(doc.start).toISOString().split('T')[0],
-				time: formatTimeRange(doc.start, doc.end),
-				duration: `${doc.length || 90} min`,
-				group: doc.group || 'Unknown',
-				status: doc.status || 'geplanned',
-				color: doc.status === 'bevestigd' ? '#3ba39b' : '#eab308',
-				teacherName: currentUser.name || 'Unknown',
-				location: 'School classroom',
-				description: doc.description || '',
-				lesson: doc.lesson,
-				school: doc.school,
-				materialen: doc.materialen || ''
-			}));
+			console.log('Dashboard: Found', response.documents.length, 'workshops');
 			
-			// Load real announcements
-			await announcementActions.fetchAnnouncements({}, true);
+			// Transform Appwrite data to match UI structure
+			const transformedWorkshops = response.documents.map(doc => {
+				const workshopDate = new Date(doc.start);
+				// Parse sessions from JSON string if needed
+				let parsedSessions = [];
+				if (doc.sessions) {
+					try {
+						parsedSessions = typeof doc.sessions === 'string' ? JSON.parse(doc.sessions) : doc.sessions;
+						console.log('Dashboard: Parsed sessions for workshop', doc.$id, ':', parsedSessions);
+					} catch (e) {
+						console.error('Dashboard: Failed to parse sessions for workshop', doc.$id, ':', e);
+						console.log('Dashboard: Raw sessions data:', doc.sessions);
+						parsedSessions = [];
+					}
+				} else {
+					console.log('Dashboard: No sessions data found for workshop', doc.$id);
+				}
+
+				// Get team name for group display
+				const getTeamNameForGroup = (teamId: string) => {
+					if (!teamId) {
+						console.log('Dashboard: No teamId for workshop', doc.$id);
+						return 'Team onbekend';
+					}
+					
+					// Get current team store value directly
+					const currentTeamStore = get(teamStore);
+					console.log('Dashboard: Current team store:', currentTeamStore);
+					
+					if (!currentTeamStore.teams?.length) {
+						console.log('Dashboard: No teams in store');
+						return 'Team onbekend';
+					}
+					
+					const team = currentTeamStore.teams.find(t => t.$id === teamId);
+					console.log('Dashboard: Looking for team ID:', teamId, 'Found:', team);
+					return team?.name || 'Team onbekend';
+				};
+
+				const workshop = {
+					id: doc.$id,
+					title: getWorkshopTitle(doc),
+					schoolName: getSchoolName(doc.school),
+					date: workshopDate.toISOString().split('T')[0],
+					time: formatTimeRange(doc.start, doc.end),
+					duration: `${doc.length || 90} min`,
+					group: doc.group || doc.klas || getTeamNameForGroup(doc.teamId),
+					status: doc.status || 'geplanned',
+					color: doc.status === 'bevestigd' ? '#3ba39b' : '#eab308',
+					teacherName: currentUser.name || 'Docent onbekend',
+					location: doc.location || 'Lokaal onbekend',
+					description: doc.description || '',
+					lesson: doc.lesson,
+					school: doc.school,
+					materialen: doc.materialen || '',
+					sessions: parsedSessions,
+					teamId: doc.teamId, // Include team ID for team selection
+					rawStart: doc.start // Keep original start time for debugging
+				};
+				
+				console.log('Dashboard: Workshop mapped:', {
+					id: workshop.id,
+					title: workshop.title,
+					date: workshop.date,
+					time: workshop.time,
+					status: workshop.status,
+					teamId: workshop.teamId,
+					rawStart: doc.start,
+					localTime: workshopDate.toLocaleString(),
+					isToday: isToday(workshop.date)
+				});
+				
+				return workshop;
+			});
+			
+			// Set workshops data immediately
+			upcomingWorkshops = transformedWorkshops;
+			console.log('Dashboard: Set upcomingWorkshops to', upcomingWorkshops.length, 'workshops');
+			
+			// Save workshop data to localStorage immediately (before announcements)
+			console.log('Dashboard: Saving workshops to localStorage immediately');
+			offlineActions.saveDashboardData(
+				upcomingWorkshops,
+				[], // Empty announcements for now
+				schoolOptions,
+				currentUser.$id
+			);
+			
+			// Load real announcements (non-blocking)
+			try {
+				await announcementActions.fetchAnnouncements({}, true);
+				console.log('Dashboard: Announcements loaded successfully, updating localStorage');
+				// Update localStorage with announcements
+				offlineActions.saveDashboardData(
+					upcomingWorkshops,
+					$announcements,
+					schoolOptions,
+					currentUser.$id
+				);
+			} catch (announcementError) {
+				console.error('Dashboard: Failed to load announcements, but workshops are saved:', announcementError);
+				// Workshops are already saved, continue without announcements
+			}
+			
 		} catch (error) {
 			console.error('Error loading dashboard data:', error);
-			upcomingWorkshops = [];
+			
+			// Try to load cached data as fallback
+			const cachedData = offlineActions.loadDashboardData();
+			if (cachedData) {
+				console.log('Loading cached data as fallback due to error');
+				upcomingWorkshops = cachedData.workshops || [];
+				schoolOptions = cachedData.schools || [];
+				if (cachedData.announcements) {
+					announcements.set(cachedData.announcements);
+				}
+				// Set user info from cached data if not already set
+				if (!currentUser && cachedData.userId) {
+					currentUser = { $id: cachedData.userId };
+				}
+			} else {
+				console.log('No cached data available, showing empty state');
+				upcomingWorkshops = [];
+			}
 		} finally {
 			loading = false;
 		}
@@ -183,8 +351,74 @@
 		});
 	}
 
-	function handleWorkshopClick(workshop: any) {
-		goto(`/planning?id=${workshop.id}`);
+	function formatSessionTime(startTime: string, endTime: string) {
+		const start = new Date(startTime);
+		const end = new Date(endTime);
+		return `${start.toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' })} - ${end.toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' })}`;
+	}
+
+	function getSessionStatus(session: any) {
+		const now = new Date();
+		const sessionStart = new Date(session.start);
+		const sessionEnd = new Date(session.end);
+		
+		if (now < sessionStart) return 'upcoming';
+		if (now >= sessionStart && now <= sessionEnd) return 'current';
+		return 'completed';
+	}
+
+	function isToday(dateString: string) {
+		const today = new Date().toISOString().split('T')[0];
+		return dateString === today;
+	}
+
+	function getTeamInitials(teamId: string): string {
+		if (!teamId) {
+			console.log('Dashboard: No teamId provided');
+			return '';
+		}
+		if (!$teamStore.teams || $teamStore.teams.length === 0) {
+			console.log('Dashboard: No teams loaded in store');
+			return '';
+		}
+		
+		const team = $teamStore.teams.find(t => t.$id === teamId);
+		if (!team) {
+			console.log('Dashboard: Team not found for ID:', teamId, 'Available teams:', $teamStore.teams.map(t => t.$id));
+			return '';
+		}
+		if (!team.name) {
+			console.log('Dashboard: Team found but no name:', team);
+			return '';
+		}
+		
+		// Convert team name to initials (e.g., "Team Alpha" -> "TA")
+		const initials = team.name
+			.split(' ')
+			.filter(word => word.length > 0)
+			.map(word => word.charAt(0).toUpperCase())
+			.join('');
+			
+		console.log('Dashboard: Generated initials for team', team.name, ':', initials);
+		return initials;
+	}
+
+	async function handleWorkshopClick(workshop: any) {
+		// Set the team based on workshop data if available
+		if (workshop.teamId) {
+			const { teamStore } = await import('$lib/stores/team');
+			const { get } = await import('svelte/store');
+			
+			// Get current teams to find the matching team
+			const currentTeamStore = get(teamStore);
+			const matchingTeam = currentTeamStore.teams.find(team => team.$id === workshop.teamId);
+			
+			if (matchingTeam) {
+				teamStore.setSelectedTeam(matchingTeam);
+			}
+		}
+		
+		goto(`/planning?id=${workshop.id}#mijn-planning`);
 	}
 
 	function toggleAnnouncement(announcementId: string) {
@@ -210,7 +444,25 @@
 
 	async function markAnnouncementAsRead(announcementId: string) {
 		try {
-			await announcementActions.markAsRead(announcementId);
+			if ($isOffline) {
+				// Store action for later sync
+				offlineActions.addPendingAction('mark_read', {
+					announcementId,
+					userId: currentUser.$id
+				});
+				
+				// Update local state immediately for better UX
+				announcements.update(items => 
+					items.map(item => {
+						if (item.$id === announcementId && !item.readBy.includes(currentUser.$id)) {
+							return { ...item, readBy: [...item.readBy, currentUser.$id] };
+						}
+						return item;
+					})
+				);
+			} else {
+				await announcementActions.markAsRead(announcementId);
+			}
 		} catch (error) {
 			console.error('Failed to mark announcement as read:', error);
 		}
@@ -264,6 +516,22 @@
 </script>
 
 <div class="container mx-auto p-4 md:p-6 max-w-7xl">
+	<!-- Offline Status Indicator -->
+	{#if $isOffline || $syncStatus === 'syncing'}
+		<div class="mb-4 rounded-lg border {$isOffline ? 'border-yellow-200 bg-yellow-50' : 'border-blue-200 bg-blue-50'} p-3">
+			<div class="flex items-center gap-2">
+				{#if $isOffline}
+					<div class="h-2 w-2 rounded-full bg-yellow-500"></div>
+					<span class="text-sm font-medium text-yellow-800">Offline modus</span>
+					<span class="text-xs text-yellow-600">- Data wordt lokaal opgeslagen</span>
+				{:else if $syncStatus === 'syncing'}
+					<div class="h-2 w-2 rounded-full bg-blue-500 animate-pulse"></div>
+					<span class="text-sm font-medium text-blue-800">Synchroniseren...</span>
+					<span class="text-xs text-blue-600">- {$offlineState.pendingActions.length} acties in wachtrij</span>
+				{/if}
+			</div>
+		</div>
+	{/if}
 
 	{#if loading}
 		<div class="flex flex-col items-center justify-center py-16">
@@ -359,7 +627,7 @@
 			<!-- Main Workshops Section -->
 			<div class="lg:col-span-2 space-y-4">
 				<!-- Today's Workshops -->
-				{#if filteredWorkshops.filter(w => w.date === new Date().toISOString().split('T')[0]).length > 0 && workshopFilter !== 'confirmed'}
+				{#if filteredWorkshops.filter(w => isToday(w.date)).length > 0 && workshopFilter !== 'confirmed'}
 				<Card.Root class="border-l-4 border-l-primary">
 					<Card.Header class="pb-3">
 						<div class="flex items-center gap-2">
@@ -368,38 +636,109 @@
 						</div>
 					</Card.Header>
 					<Card.Content>
-						<div class="space-y-3">
-							{#each filteredWorkshops.filter(w => w.date === new Date().toISOString().split('T')[0]) as workshop (workshop.id)}
-								<div class="group cursor-pointer rounded-xl border-2 border-gray-100 bg-white hover:border-primary/30 hover:shadow-lg dark:border-teal-200 dark:bg-transparent dark:hover:border-teal-400 p-4 transition-all duration-200" 
-									on:click={() => handleWorkshopClick(workshop)} 
-									role="button" 
-									tabindex="0" 
-									on:keydown={(e) => e.key === 'Enter' && handleWorkshopClick(workshop)}>
-									<div class="flex items-start justify-between mb-3">
-										<div class="flex-1">
-											<h3 class="font-bold text-base mb-1 group-hover:text-primary transition-colors">{workshop.title}</h3>
-											<p class="text-sm text-muted-foreground font-medium">{workshop.schoolName}</p>
+						<div class="space-y-4">
+							{#each filteredWorkshops.filter(w => isToday(w.date)) as workshop (workshop.id)}
+								<div class="rounded-xl border-2 border-gray-100 bg-white dark:border-teal-200 dark:bg-transparent transition-all duration-200"> 
+									<!-- Workshop Header -->
+									<div class="group cursor-pointer p-4 hover:border-primary/30 hover:shadow-lg dark:hover:border-teal-400 transition-all duration-200"
+										on:click={() => handleWorkshopClick(workshop)} 
+										role="button" 
+										tabindex="0" 
+										on:keydown={(e) => e.key === 'Enter' && handleWorkshopClick(workshop)}>
+										<div class="flex items-start justify-between mb-3">
+											<div class="flex-1">
+												<h3 class="font-bold text-base mb-1 group-hover:text-primary transition-colors">{workshop.title}</h3>
+												<p class="text-sm text-muted-foreground font-medium">{workshop.schoolName}</p>
+											</div>
+											<div class="flex items-center gap-2">
+												{#if getTeamInitials(workshop.teamId)}
+													<div class="flex items-center justify-center w-6 h-6 rounded-full bg-primary/10 text-primary text-xs font-bold">
+														{getTeamInitials(workshop.teamId)}
+													</div>
+												{/if}
+												<div class="flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium
+												{workshop.status === 'confirmed' ? 'bg-green-100 text-green-700 border border-green-200' : 'bg-yellow-100 text-yellow-700 border border-yellow-200'}">
+													<svelte:component this={getStatusIcon(workshop.status)} size={12} />
+													<span>{workshop.status === 'confirmed' ? $_('dashboard.confirmed') : $_('dashboard.pending')}</span>
+												</div>
+											</div>
 										</div>
-										<div class="flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium
-										{workshop.status === 'confirmed' ? 'bg-green-100 text-green-700 border border-green-200' : 'bg-yellow-100 text-yellow-700 border border-yellow-200'}">
-											<svelte:component this={getStatusIcon(workshop.status)} size={12} />
-											<span>{workshop.status === 'confirmed' ? $_('dashboard.confirmed') : $_('dashboard.pending')}</span>
+										<div class="grid grid-cols-3 gap-4 text-sm">
+											<div class="flex items-center gap-2 text-gray-600 dark:text-white">
+												<Clock size={16} class="text-primary" />
+												<span class="font-medium">{workshop.time}</span>
+											</div>
+											<div class="flex items-center gap-2 text-gray-600 dark:text-white">
+												<Users size={16} class="text-primary" />
+												<span class="font-medium">{workshop.group}</span>
+											</div>
+											<div class="flex items-center gap-2 text-gray-600 dark:text-white">
+												<MapPin size={16} class="text-primary" />
+												<span class="font-medium">{workshop.location}</span>
+											</div>
 										</div>
 									</div>
-									<div class="grid grid-cols-3 gap-4 text-sm">
-										<div class="flex items-center gap-2 text-gray-600">
-											<Clock size={16} class="text-primary" />
-											<span class="font-medium">{workshop.time}</span>
+
+									<!-- Session Schedule -->
+									{#if workshop.sessions && workshop.sessions.length > 0}
+										<div class="px-4 py-3 bg-gray-50/50 dark:bg-transparent">
+											<div class="flex items-center gap-2 mb-3">
+												<Clock2 size={16} class="text-primary" />
+												<h4 class="font-semibold text-sm">Sessie planning</h4>
+											</div>
+											<div class="space-y-2">
+												{#each workshop.sessions as session, i (i)}
+													{@const status = getSessionStatus(session)}
+													<div class="flex items-center gap-3 p-2 rounded-lg
+														{status === 'current' ? 'bg-primary/10 border border-primary/20' : 
+														 status === 'completed' ? 'bg-green-50 border border-green-200' : 
+														 'bg-white border border-gray-200'}">
+														
+														<!-- Session Icon -->
+														<div class="flex-shrink-0">
+															{#if session.type === 'break'}
+																<Coffee size={16} class="text-orange-500" />
+															{:else if status === 'current'}
+																<Play size={16} class="text-primary" />
+															{:else if status === 'completed'}
+																<CheckCircle2 size={16} class="text-green-600" />
+															{:else}
+																<Clock2 size={16} class="text-gray-400" />
+															{/if}
+														</div>
+
+														<!-- Session Details -->
+														<div class="flex-1 min-w-0">
+															<div class="flex items-center justify-between">
+																<div>
+																	<p class="font-medium text-sm
+																		{status === 'current' ? 'text-primary' : 
+																		 status === 'completed' ? 'text-green-700' : 
+																		 'text-gray-900'}">
+																		{session.title || (session.type === 'break' ? 'Pauze' : session.lesson || 'Sessie')}
+																	</p>
+																	{#if session.type === 'session' && session.group}
+																		<p class="text-xs text-muted-foreground">{session.group}</p>
+																	{/if}
+																</div>
+																<div class="text-right">
+																	<p class="text-xs font-medium
+																		{status === 'current' ? 'text-primary' : 
+																		 status === 'completed' ? 'text-green-600' : 
+																		 'text-gray-600'}">
+																		{formatSessionTime(session.start, session.end)}
+																	</p>
+																	<p class="text-xs text-muted-foreground">
+																		{session.duration || 0} min
+																	</p>
+																</div>
+															</div>
+														</div>
+													</div>
+												{/each}
+											</div>
 										</div>
-										<div class="flex items-center gap-2 text-gray-600">
-											<Users size={16} class="text-primary" />
-											<span class="font-medium">{workshop.group}</span>
-										</div>
-										<div class="flex items-center gap-2 text-gray-600">
-											<MapPin size={16} class="text-primary" />
-											<span class="font-medium">{workshop.location}</span>
-										</div>
-									</div>
+									{/if}
 								</div>
 							{/each}
 						</div>
@@ -447,7 +786,7 @@
 					<Card.Content>
 						{#if filteredWorkshops.length > 0}
 							<div class="space-y-2">
-								{#each filteredWorkshops.filter(w => workshopFilter === 'today' || w.date !== new Date().toISOString().split('T')[0]).slice(0, 4) as workshop (workshop.id)}
+								{#each filteredWorkshops.filter(w => workshopFilter === 'today' || !isToday(w.date)).slice(0, 4) as workshop (workshop.id)}
 									<div class="group cursor-pointer rounded-lg border border-gray-200 bg-gray-50/50 hover:border-primary/40 hover:bg-white hover:shadow-sm dark:border-teal-200 dark:bg-transparent dark:hover:border-teal-400 p-3 transition-all duration-200" 
 										on:click={() => handleWorkshopClick(workshop)} 
 										role="button" 
@@ -456,15 +795,15 @@
 										<div class="flex items-center justify-between mb-2">
 											<div class="flex-1">
 												<h4 class="font-semibold text-sm group-hover:text-primary transition-colors">{workshop.schoolName}</h4>
-												<p class="text-xs text-muted-foreground">{workshop.title}</p>
+												<p class="text-xs text-muted-foreground dark:text-white">{workshop.title}</p>
 											</div>
 											<div class="text-right">
-												<p class="text-xs font-medium text-gray-900">{formatDate(workshop.date)}</p>
-												<p class="text-xs text-muted-foreground">{workshop.time}</p>
+												<p class="text-xs font-medium text-gray-900 dark:text-white">{formatDate(workshop.date)}</p>
+												<p class="text-xs text-muted-foreground dark:text-white">{workshop.time}</p>
 											</div>
 										</div>
 										<div class="flex items-center justify-between">
-											<div class="flex items-center gap-4 text-xs text-muted-foreground">
+											<div class="flex items-center gap-4 text-xs text-muted-foreground dark:text-white">
 												<div class="flex items-center gap-1">
 													<Users size={12} />
 													<span>{workshop.group}</span>
@@ -474,15 +813,22 @@
 													<span>{workshop.duration}</span>
 												</div>
 											</div>
-											<div class="flex items-center gap-1 text-xs font-medium px-2 py-1 rounded-md
-											{workshop.status === 'confirmed' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}">
-												<svelte:component this={getStatusIcon(workshop.status)} size={10} />
-												<span>{workshop.status === 'confirmed' ? $_('dashboard.confirmed') : $_('dashboard.pending')}</span>
+											<div class="flex items-center gap-2">
+												{#if getTeamInitials(workshop.teamId)}
+													<div class="flex items-center justify-center w-5 h-5 rounded-full bg-primary/10 text-primary text-xs font-bold">
+														{getTeamInitials(workshop.teamId)}
+													</div>
+												{/if}
+												<div class="flex items-center gap-1 text-xs font-medium px-2 py-1 rounded-md
+												{workshop.status === 'confirmed' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}">
+													<svelte:component this={getStatusIcon(workshop.status)} size={10} />
+													<span>{workshop.status === 'confirmed' ? $_('dashboard.confirmed') : $_('dashboard.pending')}</span>
+												</div>
 											</div>
 										</div>
 									</div>
 								{/each}
-								{#if filteredWorkshops.filter(w => workshopFilter === 'today' || w.date !== new Date().toISOString().split('T')[0]).length > 4}
+								{#if filteredWorkshops.filter(w => workshopFilter === 'today' || !isToday(w.date)).length > 4}
 									<button class="w-full text-sm text-primary hover:text-primary/80 font-medium py-3 transition-colors border-t border-gray-200 mt-3">
 										Bekijk alle {filteredWorkshops.length} workshops →
 									</button>
