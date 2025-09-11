@@ -54,34 +54,34 @@
 .dark {
   --background: var(--color-blackened-steel);
   --foreground: #ffffff;
-  --card: var(--color-patina-copper);
+  --card: #2a2a2a;
   --card-foreground: #ffffff;
-  --popover: var(--color-patina-copper);
+  --popover: #2a2a2a;
   --popover-foreground: #ffffff;
   --primary: var(--color-neo-teal);
   --primary-foreground: var(--color-blackened-steel);
-  --secondary: var(--color-patina-copper);
+  --secondary: #374151;
   --secondary-foreground: #ffffff;
-  --muted: var(--color-patina-copper);
+  --muted: #2a2a2a;
   --muted-foreground: var(--color-ash-grey);
   --accent: var(--color-neo-teal);
   --accent-foreground: #ffffff;
   --destructive: #ef4444;
-  --border: var(--color-patina-copper);
-  --input: var(--color-patina-copper);
+  --border: #374151;
+  --input: #2a2a2a;
   --ring: var(--color-neo-teal);
   --chart-1: var(--color-neo-teal);
   --chart-2: var(--color-digital-amber);
-  --chart-3: var(--color-patina-copper);
+  --chart-3: #374151;
   --chart-4: var(--color-ash-grey);
   --chart-5: #ffffff;
   --sidebar: var(--color-blackened-steel);
   --sidebar-foreground: #ffffff;
   --sidebar-primary: var(--color-neo-teal);
   --sidebar-primary-foreground: var(--color-blackened-steel);
-  --sidebar-accent: var(--color-patina-copper);
+  --sidebar-accent: #374151;
   --sidebar-accent-foreground: #ffffff;
-  --sidebar-border: var(--color-patina-copper);
+  --sidebar-border: #374151;
   --sidebar-ring: var(--color-neo-teal);
 }
 
@@ -208,6 +208,24 @@ hr,
 
 .dark .logo-invert-light {
   filter: none;
+}
+
+/* Prevent specific image from being inverted */
+.no-invert {
+  filter: none !important;
+}
+
+/* Force tablet app images to never be inverted */
+img[src*="tablet-app-hero"],
+img[alt*="Tablet app interface"] {
+  filter: none !important;
+  -webkit-filter: none !important;
+}
+
+.dark img[src*="tablet-app-hero"],
+.dark img[alt*="Tablet app interface"] {
+  filter: none !important;
+  -webkit-filter: none !important;
 }
 
 /* Main menu text - black in light mode */

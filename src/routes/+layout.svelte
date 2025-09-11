@@ -22,11 +22,42 @@
 	} from '$lib/components/ui/sheet/index.js';
 	import Button from '$lib/components/ui/button/button.svelte';
 	import { user, isLoading, initAuth, loginWithOAuth } from '$lib/stores/auth.js';
+	import { Sun, Moon } from 'lucide-svelte';
 	
 	export let data;
 	
+	// Theme management
+	let isDark = false;
+	
+	function initTheme() {
+		// Check localStorage first, then system preference
+		const stored = localStorage.getItem('theme');
+		if (stored) {
+			isDark = stored === 'dark';
+		} else {
+			isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+		}
+		applyTheme();
+	}
+	
+	function toggleTheme() {
+		isDark = !isDark;
+		localStorage.setItem('theme', isDark ? 'dark' : 'light');
+		applyTheme();
+	}
+	
+	function applyTheme() {
+		if (isDark) {
+			document.documentElement.classList.add('dark');
+		} else {
+			document.documentElement.classList.remove('dark');
+		}
+	}
+	
 	// Initialize auth store
 	onMount(async () => {
+		// Initialize theme
+		initTheme();
 		
 		// Initialize user and locale
 		if (data.user) {
@@ -334,7 +365,22 @@
 	<div class="fixed top-4 left-4 z-50">
 		<img src="/toekomst_logo.svg" alt="Toekomst Logo" class="h-12 w-auto logo-invert-light" />
 	</div>
-	<div class="fixed top-4 right-4 z-50">
+	<div class="fixed top-4 right-4 z-50 flex items-center gap-3">
+		<!-- Theme toggle icon -->
+		<button
+			on:click={toggleTheme}
+			class="transition-colors cursor-pointer"
+			aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+			style="background: none; border: none; padding: 0; color: {isDark ? 'white' : 'black'};"
+		>
+			{#if isDark}
+				<Sun class="h-6 w-6" />
+			{:else}
+				<Moon class="h-6 w-6" />
+			{/if}
+		</button>
+		
+		<!-- Login button -->
 		<button
 			on:click={() => loginWithOAuth()}
 			class="flex h-10 items-center rounded bg-primary px-6 text-primary-foreground shadow-lg transition hover:bg-primary/90"

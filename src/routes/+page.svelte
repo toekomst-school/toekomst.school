@@ -746,7 +746,7 @@
 					<span class="ml-2 group-hover:translate-x-1 transition-transform">→</span>
 				</Button>
 				
-				<p class="text-primary font-bold counter-section">✨ Al {currentCount.toLocaleString()}+ leerlingen gingen je voor deze maand</p>
+				<p class="text-primary font-bold counter-section">✨ Al {currentCount.toLocaleString()}+ leerlingen gingen je deze maand voor</p>
 			</div>
 		</div>
 	</section>
@@ -895,9 +895,9 @@
 			
 			<div class="grid lg:grid-cols-2 gap-12 max-w-6xl mx-auto">
 				<div class="space-y-6">
-					<!-- Image placeholder -->
-					<div class="bg-muted rounded-lg p-16 text-center">
-						<p class="text-muted-foreground">[ Image Placeholder ]</p>
+					<!-- Tablet app image -->
+					<div class="rounded-lg overflow-hidden shadow-lg">
+						<img src="/images/tablet-app-hero.jpg" alt="Tablet app interface showing educational content" class="w-full h-auto object-cover no-invert" />
 					</div>
 					
 					<Card class="p-6">
@@ -959,22 +959,48 @@
 						</ul>
 					</div>
 					
-					<!-- Star rating and button side by side -->
-					<div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-						<div class="flex items-center gap-4 p-4 bg-primary/10 rounded-lg">
-							<Star class="h-8 w-8 text-primary flex-shrink-0" />
-							<div>
-								<p class="font-bold text-lg text-gray-700 dark:text-white">4.6/5 sterren</p>
-								<p class="text-sm text-muted-foreground">450+ reviews</p>
+					<!-- Star rating, download button, and purchase option -->
+					<div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+						<!-- Left column: Rating and download -->
+						<div class="space-y-6 flex flex-col items-center justify-center">
+							<div class="inline-flex items-center gap-4 p-4 bg-primary/10 rounded-lg">
+								<Star class="h-8 w-8 text-primary flex-shrink-0" />
+								<div>
+									<p class="font-bold text-lg text-gray-700 dark:text-white">4.6/5 sterren</p>
+									<p class="text-sm text-muted-foreground">450+ reviews</p>
+								</div>
+							</div>
+							
+							<div class="text-center">
+								<Button size="lg" variant="default">
+									<Laptop class="mr-2 h-5 w-5" />
+									Download de App →
+								</Button>
+								<p class="mt-2 text-sm text-muted-foreground">30 dagen gratis proberen</p>
 							</div>
 						</div>
 						
-						<div class="text-center lg:text-left">
-							<Button size="lg" variant="default">
-								<Laptop class="mr-2 h-5 w-5" />
-								Download de App →
-							</Button>
-							<p class="mt-2 text-sm text-muted-foreground">30 dagen gratis proberen</p>
+						<!-- Right column: Purchase option -->
+						<div class="space-y-6">
+							<div class="p-6 bg-secondary/10 rounded-lg border-2 border-secondary/20">
+								<div class="text-center mb-6">
+									<h4 class="font-bold text-xl text-gray-700 dark:text-white mb-2">nog geen tablet in huis?</h4>
+									<p class="text-lg font-semibold text-gray-700 dark:text-white mb-3">koop dan nu een edutab</p>
+									<p class="text-sm text-primary font-bold">incl gratis jaarlicentie toekomst.school</p>
+								</div>
+								
+								<div class="text-center">
+									<a 
+										href="https://edutab.nl/shop" 
+										target="_blank" 
+										rel="noopener noreferrer"
+									>
+										<Button size="lg" variant="secondary">
+											Bekijk Edutabs →
+										</Button>
+									</a>
+								</div>
+							</div>
 						</div>
 					</div>
 				</div>
@@ -982,11 +1008,11 @@
 		</div>
 	</section>
 
-	<!-- Section 7: Contact & Testimonials -->
-	<section class="py-20 bg-muted">
+	<!-- Section 7: Testimonials -->
+	<section class="py-20 bg-background">
 		<div class="container mx-auto px-4">
 			<!-- Testimonials -->
-			<div class="max-w-4xl mx-auto mb-20">
+			<div class="max-w-4xl mx-auto">
 				<h2 class="text-3xl md:text-4xl font-bold text-center mb-12 text-gray-700 dark:text-white">Wat Anderen Zeggen</h2>
 				
 				<div class="space-y-8">
@@ -1018,8 +1044,104 @@
 					</Card>
 				</div>
 			</div>
-			
-			<!-- Contact -->
+		</div>
+	</section>
+
+	<!-- Section 8: Social Media -->
+	<section class="py-20 bg-muted">
+		<div class="container mx-auto px-4">
+			<!-- Social Media -->
+			<div class="max-w-4xl mx-auto mb-20">
+				<h2 class="text-3xl md:text-4xl font-bold text-center mb-4 text-gray-700 dark:text-white">Volg ons op je favoriete platform</h2>
+				<div class="w-20 h-1 bg-primary mx-auto mb-12"></div>
+				
+				<div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+					<!-- Instagram -->
+					<a 
+						href="https://instagram.com/toekomstschool" 
+						target="_blank" 
+						rel="noopener noreferrer"
+						class="group"
+					>
+						<Card class="p-6 hover:shadow-lg transition-all duration-300 hover:-translate-y-1 cursor-pointer">
+							<CardContent class="text-center space-y-4">
+								<div class="flex justify-center">
+									<Instagram class="h-12 w-12 text-orange-500 group-hover:scale-110 transition-transform" />
+								</div>
+								<h3 class="font-bold text-xl text-primary">@toekomstschool</h3>
+								<p class="text-muted-foreground">Dagelijkse tips en voorbeelden</p>
+							</CardContent>
+						</Card>
+					</a>
+					
+					<!-- LinkedIn -->
+					<a 
+						href="https://linkedin.com/company/toekomstschool" 
+						target="_blank" 
+						rel="noopener noreferrer"
+						class="group"
+					>
+						<Card class="p-6 hover:shadow-lg transition-all duration-300 hover:-translate-y-1 cursor-pointer">
+							<CardContent class="text-center space-y-4">
+								<div class="flex justify-center">
+									<Linkedin class="h-12 w-12 text-orange-500 group-hover:scale-110 transition-transform" />
+								</div>
+								<h3 class="font-bold text-xl text-primary">Toekomst School</h3>
+								<p class="text-muted-foreground">Professionele updates</p>
+							</CardContent>
+						</Card>
+					</a>
+					
+					<!-- YouTube -->
+					<a 
+						href="https://youtube.com/@toekomstschool" 
+						target="_blank" 
+						rel="noopener noreferrer"
+						class="group"
+					>
+						<Card class="p-6 hover:shadow-lg transition-all duration-300 hover:-translate-y-1 cursor-pointer">
+							<CardContent class="text-center space-y-4">
+								<div class="flex justify-center">
+									<Youtube class="h-12 w-12 text-orange-500 group-hover:scale-110 transition-transform" />
+								</div>
+								<h3 class="font-bold text-xl text-primary">@toekomstschool</h3>
+								<p class="text-muted-foreground">Gratis tutorials en webinars</p>
+							</CardContent>
+						</Card>
+					</a>
+				</div>
+			</div>
+		</div>
+	</section>
+
+	<!-- Social Media Links -->
+	<section class="py-12 bg-muted">
+		<div class="container mx-auto px-4">
+			<div class="text-center">
+				<h3 class="text-xl font-bold mb-4 text-gray-700 dark:text-white">Volg ons op social media</h3>
+				<div class="flex justify-center gap-6">
+					<a href="https://linkedin.com/company/toekomst-school" target="_blank" rel="noopener noreferrer" 
+					   class="text-muted-foreground hover:text-foreground transition-colors">
+						<svg class="w-8 h-8" fill="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+							<path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/>
+						</svg>
+						<span class="sr-only">LinkedIn</span>
+					</a>
+					<a href="https://instagram.com/toekomst.school" target="_blank" rel="noopener noreferrer" 
+					   class="text-muted-foreground hover:text-foreground transition-colors">
+						<svg class="w-8 h-8" fill="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+							<path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zM5.838 12a6.162 6.162 0 1 1 12.324 0 6.162 6.162 0 0 1-12.324 0zM12 16a4 4 0 1 1 0-8 4 4 0 0 1 0 8zm4.965-10.405a1.44 1.44 0 1 1 2.881.001 1.44 1.44 0 0 1-2.881-.001z"/>
+						</svg>
+						<span class="sr-only">Instagram</span>
+					</a>
+				</div>
+			</div>
+		</div>
+	</section>
+
+	<!-- Section 9: Contact -->
+	<section class="py-20 bg-background">
+		<div class="container mx-auto px-4">
 			<div class="max-w-4xl mx-auto">
 				<h2 class="text-3xl md:text-5xl font-bold text-center mb-4 text-gray-700 dark:text-white">Contact</h2>
 				<p class="text-xl text-center text-muted-foreground mb-2">Vragen? We Helpen Graag!</p>
@@ -1087,7 +1209,7 @@
 	</section>
 
 	<!-- Footer -->
-	<footer class="py-20 bg-background text-foreground">
+	<footer class="py-20 bg-muted text-foreground">
 		<div class="container mx-auto px-4">
 			<div class="max-w-4xl mx-auto text-center space-y-8">
 				<div>
@@ -1132,6 +1254,14 @@
 					<p class="text-lg italic text-muted-foreground">
 						"Technologie is er voor iedereen - laten we ervoor zorgen dat iedereen er ook bij kan."
 					</p>
+					<div class="mt-8 flex justify-center gap-8 text-sm">
+						<a href="/algemene-voorwaarden" class="text-muted-foreground hover:text-foreground transition-colors">
+							Algemene Voorwaarden
+						</a>
+						<a href="/privacy-verklaring" class="text-muted-foreground hover:text-foreground transition-colors">
+							Privacy Verklaring
+						</a>
+					</div>
 				</div>
 			</div>
 		</div>
