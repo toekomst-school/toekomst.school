@@ -27,8 +27,6 @@
 	
 	// Initialize auth store
 	onMount(async () => {
-		// Set dark mode as default
-		document.documentElement.classList.add('dark');
 		
 		// Initialize user and locale
 		if (data.user) {

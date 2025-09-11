@@ -2,32 +2,10 @@
 	import { Button } from '$lib/components/ui/button';
 	import { Card, CardContent, CardHeader, CardTitle } from '$lib/components/ui/card';
 	import * as Dialog from '$lib/components/ui/dialog';
-	import { Gamepad2, Users, Laptop, Star, Instagram, Linkedin, Youtube, TrendingUp, Sparkles, Code, Cpu, Wifi, Smartphone, Monitor, Headphones, Camera, Zap } from 'lucide-svelte';
+	import { Gamepad2, Users, Laptop, Star, Instagram, Linkedin, Youtube, TrendingUp, Sparkles, Code, Cpu, Wifi, Smartphone, Monitor, Headphones, Camera, Zap, GraduationCap, Heart, Gift, BookOpen } from 'lucide-svelte';
 	import { onMount } from 'svelte';
 	import { animate } from 'animejs';
 	
-	// Theme detection
-	let theme = 'dark';
-	
-	function detectTheme() {
-		if (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) {
-			theme = 'light';
-		} else {
-			theme = 'dark';
-		}
-	}
-	
-	// Listen for theme changes
-	if (typeof window !== 'undefined') {
-		window.matchMedia('(prefers-color-scheme: light)').addEventListener('change', event => {
-			theme = event.matches ? 'light' : 'dark';
-		});
-	}
-	
-	// Manual theme toggle for testing
-	function toggleTheme() {
-		theme = theme === 'light' ? 'dark' : 'light';
-	}
 	
 	// Smooth scroll to section
 	function scrollToSection(sectionId: string) {
@@ -42,11 +20,14 @@
 	let isModalOpen = false;
 	let selectedNiveau: any = null;
 	
+	// Counter animation
+	let currentCount = 0;
+	
 	const niveauData = [
 		{
 			id: 1,
 			title: "Digitale Toegankelijkheid",
-			subtitle: "Voor mensen die ondersteuning nodig hebben bij computergebruik",
+			subtitle: "Voor iedereen die ondersteuning nodig heeft bij computergebruik",
 			description: "Speciaal ontwikkeld voor mensen die om verschillende redenen afstand ervaren tot computers en technologie. Of je nu een beperking hebt, moeite hebt met technologie door leeftijd, angst, of andere uitdagingen - wij zorgen ervoor dat ook jij mee kunt doen in de digitale wereld.",
 			skills: [
 				"Computer bedienen op een manier die voor jou werkt",
@@ -73,8 +54,8 @@
 		},
 		{
 			id: 3,
-			title: "Digitale Uitvinders",
-			subtitle: "Nerds(neurodiversen) en alle andere geintereseerde welkom!",
+			title: "Digitale\nUitvinders",
+			subtitle: "Nerds(neurodiversen) en alle andere knutselaars welkom!",
 			description: "Hier duiken we diep de technologie in. Perfect voor mensen die helemaal opgaan in techniek en echt willen begrijpen hoe dingen werken.",
 			skills: [
 				"Ethisch hacken en cybersecurity",
@@ -83,7 +64,7 @@
 				"Robotica en AI-projecten",
 				"3D printen en makerspace vaardigheden"
 			],
-			buttonText: "Ontdek Digitale Uitvinders"
+			buttonText: "Ontdek Digitale\nUitvinders"
 		}
 	];
 	
@@ -137,11 +118,163 @@
 
 	// Animate levels on mount
 	onMount(() => {
-		// Detect theme on mount
-		detectTheme();
-		
 		// Start typewriter animation
 		typeText(texts[0]);
+		
+		// Set up scroll-triggered counter animation
+		let hasCounterAnimated = false;
+		
+		const setupCounterAnimation = () => {
+			const counterElement = document.querySelector('.counter-section');
+			if (!counterElement) return;
+			
+			const observer = new IntersectionObserver((entries) => {
+				entries.forEach((entry) => {
+					if (entry.isIntersecting && !hasCounterAnimated) {
+						hasCounterAnimated = true;
+						
+						console.log('Counter animation triggered!');
+						
+						// Calculate target value: 48 * day of week (Monday=1, Sunday=7)
+						const today = new Date();
+						const dayOfWeek = today.getDay(); // 0=Sunday, 1=Monday, etc.
+						const adjustedDay = dayOfWeek === 0 ? 7 : dayOfWeek; // Convert Sunday to 7
+						const targetValue = 48 * adjustedDay;
+						
+						console.log('Day of week:', adjustedDay, 'Target value:', targetValue);
+						
+						// Use simple manual animation since anime.js is having issues
+						const duration = 2000;
+						const startTime = Date.now();
+						
+						const animateCounter = () => {
+							const elapsed = Date.now() - startTime;
+							const progress = Math.min(elapsed / duration, 1);
+							
+							// Easing function (ease out)
+							const easeOut = 1 - Math.pow(1 - progress, 3);
+							const value = Math.round(targetValue * easeOut);
+							
+							currentCount = value;
+							
+							if (progress < 1) {
+								requestAnimationFrame(animateCounter);
+							}
+						};
+						
+						requestAnimationFrame(animateCounter);
+						
+						observer.disconnect();
+					}
+				});
+			}, { threshold: 0.5 });
+			
+			observer.observe(counterElement);
+		};
+		
+		// Set up counter animation after a short delay
+		setTimeout(setupCounterAnimation, 100);
+		
+		// Set up mobile/tablet timeline animations
+		if (window.innerWidth < 1024) {
+			// Initially hide timeline cards
+			const timelineCards = document.querySelectorAll('.timeline-card');
+			const timelineDots = document.querySelectorAll('.timeline-dot');
+			const timelineLine = document.querySelector('.timeline-line');
+			
+			timelineCards.forEach(card => {
+				(card as HTMLElement).style.opacity = '0';
+				(card as HTMLElement).style.transform = 'translateX(30px)';
+			});
+			
+			timelineDots.forEach(dot => {
+				(dot as HTMLElement).style.opacity = '0';
+				(dot as HTMLElement).style.transform = 'scale(0)';
+			});
+			
+			if (timelineLine) {
+				(timelineLine as HTMLElement).style.height = '0%';
+			}
+			
+			// Create intersection observer for mobile timeline animation
+			const mobileObserver = new IntersectionObserver((entries) => {
+				entries.forEach(entry => {
+					if (entry.isIntersecting) {
+						// First animate the timeline line
+						if (timelineLine) {
+							try {
+								animate(timelineLine, {
+									height: [
+										{ from: '0%', to: '100%', duration: 1500, ease: 'out(3)' }
+									]
+								});
+							} catch (error) {
+								// Fallback animation
+								(timelineLine as HTMLElement).style.transition = 'height 1.5s ease-out';
+								(timelineLine as HTMLElement).style.height = '100%';
+							}
+						}
+						
+						// Then animate dots and cards in sequence
+						const validDots = Array.from(timelineDots).filter(el => el && el.nodeType === Node.ELEMENT_NODE) as HTMLElement[];
+						const validCards = Array.from(timelineCards).filter(el => el && el.nodeType === Node.ELEMENT_NODE) as HTMLElement[];
+						
+						// Animate dots
+						if (validDots.length > 0) {
+							try {
+								animate(validDots, {
+									opacity: [
+										{ from: 0, to: 1, duration: 800, ease: 'out(3)' }
+									],
+									scale: [
+										{ from: 0, to: 1, duration: 800, ease: 'out(3)' }
+									],
+									delay: (el: any, i: number) => 400 + (i * 300)
+								});
+							} catch (error) {
+								// Fallback animation
+								validDots.forEach((dot, i) => {
+									setTimeout(() => {
+										dot.style.transition = 'all 0.8s ease-out';
+										dot.style.opacity = '1';
+										dot.style.transform = 'scale(1)';
+									}, 400 + (i * 300));
+								});
+							}
+						}
+						
+						// Animate cards
+						if (validCards.length > 0) {
+							try {
+								animate(validCards, {
+									opacity: [
+										{ from: 0, to: 1, duration: 1000, ease: 'out(3)' }
+									],
+									x: [
+										{ from: 30, to: 0, duration: 1000, ease: 'out(3)' }
+									],
+									delay: (el: any, i: number) => 600 + (i * 300)
+								});
+							} catch (error) {
+								// Fallback animation
+								validCards.forEach((card, i) => {
+									setTimeout(() => {
+										card.style.transition = 'all 1s ease-out';
+										card.style.opacity = '1';
+										card.style.transform = 'translateX(0)';
+									}, 600 + (i * 300));
+								});
+							}
+						}
+						
+						mobileObserver.disconnect();
+					}
+				});
+			}, { threshold: 0.2 });
+			
+			const section = document.querySelector('#learning-routes');
+			if (section) mobileObserver.observe(section);
+		}
 		
 		// Check if we're on desktop
 		if (window.innerWidth >= 1024) {
@@ -260,13 +393,13 @@
 	Skip to main content
 </a>
 
-<main id="main-content" class="min-h-screen {theme}-theme">
+<main id="main-content" class="min-h-screen">
 	<!-- Hero Section -->
 	<section class="relative min-h-screen flex items-center justify-center overflow-hidden">
 		<!-- Background video placeholder -->
 		<div class="absolute inset-0 z-0" aria-hidden="true">
-			<div class="w-full h-full bg-gradient-to-br from-blackened-steel via-patina-copper to-blackened-steel opacity-90">
-				<div class="absolute inset-0 flex items-center justify-center text-white/20">
+			<div class="w-full h-full bg-background">
+				<div class="absolute inset-0 flex items-center justify-center text-muted-foreground/20">
 					<p class="text-2xl font-bold">[ Achtergrondvideo Placeholder ]</p>
 				</div>
 			</div>
@@ -274,12 +407,12 @@
 		
 		<!-- Hero content -->
 		<div class="relative z-10 container mx-auto px-4 text-center">
-			<h1 class="text-4xl md:text-6xl lg:text-7xl font-bold mb-6 text-white">
+			<h1 class="text-4xl md:text-6xl lg:text-7xl font-bold mb-6 text-gray-700 dark:text-white">
 				DE TOEKOMST IS VAN IEDEREEN
 			</h1>
 			
 			<!-- Typewriter animation container -->
-			<div class="max-w-4xl mx-auto text-lg md:text-xl text-white/90 mb-12" style="min-height: 80px;">
+			<div class="max-w-4xl mx-auto text-lg md:text-xl text-muted-foreground mb-12" style="min-height: 80px;">
 				<p class="typewriter-text">
 					{typewriterText}<span class="cursor" class:blinking={!isTyping}>|</span>
 				</p>
@@ -290,12 +423,12 @@
 				Start Mijn Toekomst
 				<span class="ml-2 group-hover:translate-x-1 transition-transform">→</span>
 			</Button>
-			<p class="mt-4 text-white/60">Start met ons gratis introductie-spel</p>
+			<p class="mt-4 text-muted-foreground">ontdek direct onze videogame</p>
 		</div>
 		
 		<!-- Scroll indicator -->
 		<div class="absolute bottom-16 left-1/2 transform -translate-x-1/2 animate-bounce">
-			<button onclick={() => scrollToSection('learning-routes')} aria-label="Scroll naar leerroutes" class="text-white/60 hover:text-white transition-colors">
+			<button onclick={() => scrollToSection('learning-routes')} aria-label="Scroll naar leerroutes" class="text-muted-foreground hover:text-foreground transition-colors">
 				<svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 14l-7 7m0 0l-7-7m7 7V3" />
 				</svg>
@@ -305,11 +438,11 @@
 
 	<!-- Section 2: Learning Routes -->
 	<section id="learning-routes" class="py-20 bg-background overflow-hidden relative">
-		<!-- Animated background gradient -->
-		<div class="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-secondary/5"></div>
+		<!-- Subtle brand color gradient -->
+		<div class="absolute inset-0 bg-gradient-to-br from-[#6e7c62]/5 via-transparent to-[#b2b2a2]/5"></div>
 		
 		<div class="container mx-auto px-4 relative z-10">
-			<h2 class="text-3xl md:text-5xl font-bold text-center mb-4">Leren op Jouw Niveau</h2>
+			<h2 class="text-3xl md:text-5xl font-bold text-center mb-4 text-gray-700 dark:text-white">Leren op Jouw Niveau</h2>
 			<div class="w-20 h-1 bg-primary mx-auto mb-16"></div>
 			
 			<!-- Desktop stair-step layout -->
@@ -362,10 +495,10 @@
 							<div class="niveau-number absolute -top-10 -left-4 text-5xl font-bold text-primary/30">1</div>
 							<div class="absolute -inset-2 bg-gradient-to-r from-primary/20 to-secondary/20 rounded-lg blur-lg opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
 							
-							<Card class="relative bg-gradient-to-br from-background to-muted/50 border-2 hover:border-primary transition-all duration-300 hover:shadow-2xl transform hover:-translate-y-2">
+							<Card class="relative bg-gradient-to-br from-background to-muted/50 border-2 hover:border-primary transition-all duration-300 hover:shadow-2xl transform hover:-translate-y-2 cursor-pointer" onclick={() => openModal(niveauData[0])}>
 								<CardHeader class="pb-3">
 									<div class="mb-2">
-										<CardTitle class="text-lg">{niveauData[0].title}</CardTitle>
+										<CardTitle class="text-lg text-gray-700 dark:text-white">{niveauData[0].title}</CardTitle>
 									</div>
 									<p class="text-sm text-muted-foreground">{niveauData[0].subtitle}</p>
 								</CardHeader>
@@ -390,10 +523,10 @@
 							<div class="niveau-number absolute -top-10 -left-4 text-5xl font-bold text-primary/30">2</div>
 							<div class="absolute -inset-2 bg-gradient-to-r from-primary/20 to-secondary/20 rounded-lg blur-lg opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
 							
-							<Card class="relative bg-gradient-to-br from-background to-muted/50 border-2 hover:border-primary transition-all duration-300 hover:shadow-2xl transform hover:-translate-y-2">
+							<Card class="relative bg-gradient-to-br from-background to-muted/50 border-2 hover:border-primary transition-all duration-300 hover:shadow-2xl transform hover:-translate-y-2 cursor-pointer" onclick={() => openModal(niveauData[1])}>
 								<CardHeader class="pb-3">
 									<div class="mb-2">
-										<CardTitle class="text-lg">{niveauData[1].title}</CardTitle>
+										<CardTitle class="text-lg text-gray-700 dark:text-white">{niveauData[1].title}</CardTitle>
 									</div>
 									<p class="text-sm text-muted-foreground">{niveauData[1].subtitle}</p>
 								</CardHeader>
@@ -418,14 +551,14 @@
 							<div class="niveau-number absolute -top-10 -left-4 text-5xl font-bold text-primary/30">3</div>
 							<div class="absolute -inset-2 bg-gradient-to-r from-primary/20 to-secondary/20 rounded-lg blur-lg opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
 							
-							<div class="absolute -top-2 -right-2 bg-primary text-primary-foreground rounded-full p-1.5 shadow-lg">
+							<div class="absolute -top-2 -right-2 bg-primary text-primary-foreground rounded-full p-1.5 shadow-lg z-20">
 								<Star class="h-4 w-4" />
 							</div>
 							
-							<Card class="relative bg-gradient-to-br from-background to-muted/50 border-2 hover:border-primary transition-all duration-300 hover:shadow-2xl transform hover:-translate-y-2">
+							<Card class="relative bg-gradient-to-br from-background to-muted/50 border-2 hover:border-primary transition-all duration-300 hover:shadow-2xl transform hover:-translate-y-2 cursor-pointer" onclick={() => openModal(niveauData[2])}>
 								<CardHeader class="pb-3">
 									<div class="mb-2">
-										<CardTitle class="text-lg">{niveauData[2].title}</CardTitle>
+										<CardTitle class="text-lg text-gray-700 dark:text-white whitespace-pre-line">{niveauData[2].title}</CardTitle>
 									</div>
 									<p class="text-sm text-muted-foreground">{niveauData[2].subtitle}</p>
 								</CardHeader>
@@ -482,13 +615,13 @@
 			<!-- Tablet/Mobile layout with timeline -->
 			<div class="lg:hidden relative max-w-4xl mx-auto">
 				<!-- Timeline line -->
-				<div class="absolute left-8 top-0 bottom-0 w-0.5 bg-primary/30"></div>
+				<div class="timeline-line absolute left-8 top-0 bottom-0 w-0.5 bg-primary/30"></div>
 				
 				<div class="space-y-12">
 					<!-- Niveau 1 -->
 					<div class="relative flex items-start">
 						<!-- Timeline dot -->
-						<div class="absolute left-6 bg-primary text-primary-foreground rounded-full w-6 h-6 flex items-center justify-center text-sm font-bold z-10">
+						<div class="timeline-dot absolute left-6 bg-primary text-primary-foreground rounded-full w-6 h-6 flex items-center justify-center text-sm font-bold z-10">
 							1
 						</div>
 						
@@ -497,10 +630,10 @@
 							<div class="relative group">
 								<div class="absolute -inset-2 bg-gradient-to-r from-primary/20 to-secondary/20 rounded-lg blur-lg opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
 								
-								<Card class="relative bg-gradient-to-br from-background to-muted/50 border-2 hover:border-primary transition-all duration-300 hover:shadow-2xl">
+								<Card class="timeline-card relative bg-gradient-to-br from-background to-muted/50 border-2 hover:border-primary transition-all duration-300 hover:shadow-2xl cursor-pointer" onclick={() => openModal(niveauData[0])}>
 									<CardHeader class="pb-3">
 										<div class="mb-2">
-											<CardTitle class="text-lg">{niveauData[0].title}</CardTitle>
+											<CardTitle class="text-lg text-gray-700 dark:text-white">{niveauData[0].title}</CardTitle>
 										</div>
 										<p class="text-sm text-muted-foreground">{niveauData[0].subtitle}</p>
 									</CardHeader>
@@ -523,7 +656,7 @@
 					<!-- Niveau 2 -->
 					<div class="relative flex items-start">
 						<!-- Timeline dot -->
-						<div class="absolute left-6 bg-primary text-primary-foreground rounded-full w-6 h-6 flex items-center justify-center text-sm font-bold z-10">
+						<div class="timeline-dot absolute left-6 bg-primary text-primary-foreground rounded-full w-6 h-6 flex items-center justify-center text-sm font-bold z-10">
 							2
 						</div>
 						
@@ -532,10 +665,10 @@
 							<div class="relative group">
 								<div class="absolute -inset-2 bg-gradient-to-r from-primary/20 to-secondary/20 rounded-lg blur-lg opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
 								
-								<Card class="relative bg-gradient-to-br from-background to-muted/50 border-2 hover:border-primary transition-all duration-300 hover:shadow-2xl">
+								<Card class="timeline-card relative bg-gradient-to-br from-background to-muted/50 border-2 hover:border-primary transition-all duration-300 hover:shadow-2xl cursor-pointer" onclick={() => openModal(niveauData[1])}>
 									<CardHeader class="pb-3">
 										<div class="mb-2">
-											<CardTitle class="text-lg">{niveauData[1].title}</CardTitle>
+											<CardTitle class="text-lg text-gray-700 dark:text-white">{niveauData[1].title}</CardTitle>
 										</div>
 										<p class="text-sm text-muted-foreground">{niveauData[1].subtitle}</p>
 									</CardHeader>
@@ -558,7 +691,7 @@
 					<!-- Niveau 3 -->
 					<div class="relative flex items-start">
 						<!-- Timeline dot -->
-						<div class="absolute left-6 bg-primary text-primary-foreground rounded-full w-6 h-6 flex items-center justify-center text-sm font-bold z-10">
+						<div class="timeline-dot absolute left-6 bg-primary text-primary-foreground rounded-full w-6 h-6 flex items-center justify-center text-sm font-bold z-10">
 							3
 						</div>
 						
@@ -567,14 +700,14 @@
 							<div class="relative group">
 								<div class="absolute -inset-2 bg-gradient-to-r from-primary/20 to-secondary/20 rounded-lg blur-lg opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
 								
-								<div class="absolute -top-2 -right-2 bg-primary text-primary-foreground rounded-full p-1.5 shadow-lg">
+								<div class="absolute -top-2 -right-2 bg-primary text-primary-foreground rounded-full p-1.5 shadow-lg z-20">
 									<Star class="h-4 w-4" />
 								</div>
 								
-								<Card class="relative bg-gradient-to-br from-background to-muted/50 border-2 hover:border-primary transition-all duration-300 hover:shadow-2xl">
+								<Card class="timeline-card relative bg-gradient-to-br from-background to-muted/50 border-2 hover:border-primary transition-all duration-300 hover:shadow-2xl cursor-pointer" onclick={() => openModal(niveauData[2])}>
 									<CardHeader class="pb-3">
 										<div class="mb-2">
-											<CardTitle class="text-lg">{niveauData[2].title}</CardTitle>
+											<CardTitle class="text-lg text-gray-700 dark:text-white whitespace-pre-line">{niveauData[2].title}</CardTitle>
 										</div>
 										<p class="text-sm text-muted-foreground">{niveauData[2].subtitle}</p>
 									</CardHeader>
@@ -599,10 +732,10 @@
 	</section>
 
 	<!-- Section 3: Call to Action -->
-	<section class="py-20 bg-muted/50">
+	<section class="py-20 bg-muted">
 		<div class="container mx-auto px-4">
 			<div class="max-w-3xl mx-auto text-center space-y-8">
-				<h2 class="text-4xl md:text-6xl font-bold">Klaar om te Beginnen?</h2>
+				<h2 class="text-4xl md:text-6xl font-bold text-gray-700 dark:text-white">Klaar om te Beginnen?</h2>
 				<p class="text-xl text-muted-foreground">
 					Start vandaag nog met jou unieke leerroute, ontdek het binnen 10 minuten
 				</p>
@@ -613,7 +746,7 @@
 					<span class="ml-2 group-hover:translate-x-1 transition-transform">→</span>
 				</Button>
 				
-				<p class="text-primary font-bold">✨ Al 1.200+ kinderen gingen je voor deze maand</p>
+				<p class="text-primary font-bold counter-section">✨ Al {currentCount.toLocaleString()}+ leerlingen gingen je voor deze maand</p>
 			</div>
 		</div>
 	</section>
@@ -621,59 +754,55 @@
 	<!-- Section 4: For Teachers -->
 	<section class="py-20 bg-background">
 		<div class="container mx-auto px-4">
-			<h2 class="text-3xl md:text-5xl font-bold text-center mb-4">Voor Docenten</h2>
-			<p class="text-xl text-center text-muted-foreground mb-2">Maak Je Digitale Lessen Inclusiever En Makkelijker</p>
+			<h2 class="text-3xl md:text-5xl font-bold text-center mb-4 text-gray-700 dark:text-white">Voor Docenten</h2>
+			<p class="text-xl text-center text-muted-foreground mb-2">Maak Je Digitale Leeromgeving Inclusiever En Makkelijker</p>
 			<div class="w-20 h-1 bg-primary mx-auto mb-16"></div>
 			
 			<div class="max-w-4xl mx-auto">
 				<Card class="p-8">
 					<CardContent class="space-y-6">
-						<h3 class="text-2xl font-bold">Wat kunnen wij voor je betekenen?</h3>
-						<p class="text-lg">
+						<h3 class="text-2xl font-bold text-gray-700 dark:text-white">Leerlijn digitale geletterdheid en burgerschap</h3>
+						<p class="text-lg text-gray-700 dark:text-white">
 							Ontdek hoe ons platform jouw lessen over digitale geletterdheid naar een hoger niveau tilt, met extra aandacht voor inclusief onderwijs waar iedereen bij kan.
 						</p>
 						
 						<div class="grid md:grid-cols-2 gap-6">
 							<div class="space-y-4">
-								<h4 class="font-bold text-xl">Wat je krijgt:</h4>
+								<h4 class="font-bold text-xl text-gray-700 dark:text-white">Wat je krijgt:</h4>
 								<ul class="space-y-2">
 									<li class="flex items-start">
 										<span class="text-primary mr-2">✓</span>
-										<span>Gebruiksklare lesmodules voor alle niveaus</span>
+										<span class="text-gray-700 dark:text-white">Gebruiksklare lesmodules op basis van SLO richtlijnen</span>
 									</li>
 									<li class="flex items-start">
 										<span class="text-primary mr-2">✓</span>
-										<span>Toegankelijke tools voor leerlingen met verschillende behoeften</span>
+										<span class="text-gray-700 dark:text-white">Toegankelijke tools voor leerlingen met verschillende behoeften</span>
 									</li>
 									<li class="flex items-start">
 										<span class="text-primary mr-2">✓</span>
-										<span>Realtime voortgang bijhouden</span>
+										<span class="text-gray-700 dark:text-white">Realtime voortgang bijhouden</span>
 									</li>
 									<li class="flex items-start">
 										<span class="text-primary mr-2">✓</span>
-										<span>Ondersteuning bij het implementeren van inclusief ICT-onderwijs</span>
-									</li>
-									<li class="flex items-start">
-										<span class="text-primary mr-2">✓</span>
-										<span>Gratis trainingen en kennisuitwisseling</span>
+										<span class="text-gray-700 dark:text-white">Ondersteuning bij het implementeren van inclusief ICT-onderwijs</span>
 									</li>
 								</ul>
 							</div>
 							
 							<div class="flex items-center justify-center">
 								<div class="text-center space-y-4">
+									<p class="text-sm text-muted-foreground">📚 Gebruikt door</p>
 									<div class="bg-primary/10 p-8 rounded-lg">
 										<p class="text-4xl font-bold text-primary">85</p>
-										<p class="text-lg">scholen in Nederland</p>
+										<p class="text-lg text-gray-700 dark:text-white">scholen in Nederland</p>
 									</div>
-									<p class="text-sm text-muted-foreground">📚 Gebruikt door</p>
 								</div>
 							</div>
 						</div>
 						
 						<div class="text-center">
 							<Button size="lg" variant="default">
-								Bekijk Docentenportaal →
+								Start Demo →
 							</Button>
 						</div>
 					</CardContent>
@@ -683,69 +812,76 @@
 	</section>
 
 	<!-- Section 5: Mobile Teaching -->
-	<section class="py-20 bg-muted/50">
+	<section class="py-20 bg-muted">
 		<div class="container mx-auto px-4">
-			<h2 class="text-3xl md:text-5xl font-bold text-center mb-4">docent on demand</h2>
+			<h2 class="text-3xl md:text-5xl font-bold text-center mb-4 text-gray-700 dark:text-white">docent on demand</h2>
 			<p class="text-xl text-center text-muted-foreground mb-2">bij jou op locatie of online</p>
 			<div class="w-20 h-1 bg-primary mx-auto mb-16"></div>
 			
 			<div class="grid lg:grid-cols-2 gap-12 max-w-6xl mx-auto">
 				<div class="space-y-6">
-					<h3 class="text-2xl font-bold">Mobiel Onderwijs</h3>
-					<p class="text-lg">
+					<h3 class="text-2xl font-bold text-gray-700 dark:text-white">Mobiel Onderwijs</h3>
+					<p class="text-lg text-gray-700 dark:text-white">
 						Geen tijd of middelen om zelf de les te geven? Wij sturen ervaren docenten naar scholen, buurthuizen, verzorgingstehuizen en andere locaties. Onze tabletkoffers met vakdocent maken overal kwalitatief digitaal onderwijs mogelijk.
 					</p>
 					
 					<div class="space-y-4">
-						<h4 class="font-bold text-xl">Onze aanpak:</h4>
+						<h4 class="font-bold text-xl text-gray-700 dark:text-white">Onze aanpak:</h4>
 						<ul class="space-y-2">
 							<li class="flex items-start">
 								<span class="text-primary mr-2">•</span>
-								<span>Gekwalificeerde docenten met ervaring in inclusief onderwijs</span>
+								<span class="text-gray-700 dark:text-white">Gekwalificeerde docenten met ervaring in inclusief onderwijs</span>
 							</li>
 							<li class="flex items-start">
 								<span class="text-primary mr-2">•</span>
-								<span>Alle benodigde apparatuur nemen we mee</span>
+								<span class="text-gray-700 dark:text-white">Alle benodigde apparatuur nemen we mee</span>
 							</li>
 							<li class="flex items-start">
 								<span class="text-primary mr-2">•</span>
-								<span>Flexibele planning aangepast aan jullie behoeften</span>
+								<span class="text-gray-700 dark:text-white">Flexibele planning aangepast aan jullie behoeften</span>
 							</li>
 							<li class="flex items-start">
 								<span class="text-primary mr-2">•</span>
-								<span>Workshops voor groepen van 5 tot 30 personen</span>
+								<span class="text-gray-700 dark:text-white">Workshops voor groepen van 5 tot 30 personen</span>
 							</li>
 						</ul>
 					</div>
 				</div>
 				
 				<div class="space-y-6">
+					<!-- Image placeholder -->
+					<div class="bg-muted rounded-lg p-16 text-center">
+						<p class="text-muted-foreground">[ Image Placeholder ]</p>
+					</div>
+					
 					<div class="bg-primary/10 p-6 rounded-lg">
-						<h4 class="font-bold text-xl mb-4">Perfect voor:</h4>
+						<h4 class="font-bold text-xl mb-4 text-gray-700 dark:text-white">Perfect voor:</h4>
 						<ul class="space-y-3">
 							<li class="flex items-center">
-								<Users class="h-5 w-5 text-primary mr-3 flex-shrink-0" />
-								<span>Scholen die hun digitale onderwijs willen versterken</span>
+								<GraduationCap class="h-5 w-5 text-primary mr-3 flex-shrink-0" />
+								<span class="text-gray-700 dark:text-white">basis en middelbare scholen</span>
 							</li>
 							<li class="flex items-center">
-								<Users class="h-5 w-5 text-primary mr-3 flex-shrink-0" />
-								<span>Buurthuizen en wijkcentra</span>
+								<Heart class="h-5 w-5 text-primary mr-3 flex-shrink-0" />
+								<span class="text-gray-700 dark:text-white">speciaal onderwijs en zorg locaties</span>
 							</li>
 							<li class="flex items-center">
-								<Users class="h-5 w-5 text-primary mr-3 flex-shrink-0" />
-								<span>Zorglocaties en bibliotheken</span>
+								<Gift class="h-5 w-5 text-primary mr-3 flex-shrink-0" />
+								<span class="text-gray-700 dark:text-white">kinderfeestjes en bedrijfsworkshops</span>
 							</li>
 							<li class="flex items-center">
-								<Users class="h-5 w-5 text-primary mr-3 flex-shrink-0" />
-								<span>Bedrijven die hun teams willen bijscholen</span>
+								<BookOpen class="h-5 w-5 text-primary mr-3 flex-shrink-0" />
+								<span class="text-gray-700 dark:text-white">bibliotheken en wijkcentra</span>
 							</li>
 						</ul>
 					</div>
 					
-					<div class="text-center lg:text-left">
-						<Button size="lg">Plan Een Bezoek In →</Button>
-					</div>
 				</div>
+			</div>
+			
+			<!-- Centered button below both columns -->
+			<div class="text-center mt-16">
+				<Button size="lg">Plan Een Bezoek In →</Button>
 			</div>
 		</div>
 	</section>
@@ -753,83 +889,93 @@
 	<!-- Section 6: Tablet App -->
 	<section class="py-20 bg-background">
 		<div class="container mx-auto px-4">
-			<h2 class="text-3xl md:text-5xl font-bold text-center mb-4">Thuis verder ontdekken?</h2>
+			<h2 class="text-3xl md:text-5xl font-bold text-center mb-4 text-gray-700 dark:text-white">Thuis verder ontdekken?</h2>
 			<p class="text-xl text-center text-muted-foreground mb-2">beschikbaar via web en android</p>
 			<div class="w-20 h-1 bg-primary mx-auto mb-16"></div>
 			
 			<div class="grid lg:grid-cols-2 gap-12 max-w-6xl mx-auto">
 				<div class="space-y-6">
-					<h3 class="text-2xl font-bold">De App Die Meegaat</h3>
-					<p class="text-lg">
-						Transformeer je tablet in een complete digitale school! Onze app brengt inclusief technologieonderwijs direct in je huiskamer.
-					</p>
-					
-					<div class="space-y-4">
-						<h4 class="font-bold text-xl">Bijzondere kenmerken:</h4>
-						<ul class="space-y-2">
-							<li class="flex items-start">
-								<span class="text-primary mr-2 font-bold">•</span>
-								<span><strong>Werkt offline</strong> - perfecte voor onderweg</span>
-							</li>
-							<li class="flex items-start">
-								<span class="text-primary mr-2 font-bold">•</span>
-								<span><strong>Toegankelijk ontwerp</strong> voor verschillende behoeften</span>
-							</li>
-							<li class="flex items-start">
-								<span class="text-primary mr-2 font-bold">•</span>
-								<span><strong>Ouderportaal</strong> om voortgang te volgen</span>
-							</li>
-							<li class="flex items-start">
-								<span class="text-primary mr-2 font-bold">•</span>
-								<span><strong>Speels leren</strong> met badges en uitdagingen</span>
-							</li>
-							<li class="flex items-start">
-								<span class="text-primary mr-2 font-bold">•</span>
-								<span><strong>Verschillende moeilijkheidsgraden</strong> in één app</span>
-							</li>
-						</ul>
+					<!-- Image placeholder -->
+					<div class="bg-muted rounded-lg p-16 text-center">
+						<p class="text-muted-foreground">[ Image Placeholder ]</p>
 					</div>
 					
-					<div class="flex items-center gap-4 p-4 bg-primary/10 rounded-lg">
-						<Star class="h-8 w-8 text-primary flex-shrink-0" />
-						<div>
-							<p class="font-bold text-lg">4.6/5 sterren</p>
-							<p class="text-sm text-muted-foreground">450+ reviews</p>
-						</div>
-					</div>
-				</div>
-				
-				<div class="space-y-6">
 					<Card class="p-6">
 						<CardContent class="space-y-4">
-							<h4 class="font-bold text-xl">Speciaal ontworpen voor:</h4>
+							<h4 class="font-bold text-xl text-gray-700 dark:text-white">Speciaal ontworpen voor:</h4>
 							<ul class="space-y-2">
 								<li class="flex items-start">
 									<span class="text-primary mr-2">✓</span>
-									<span>Kinderen met ADHD, autisme of andere neurodiversiteit</span>
+									<span class="text-gray-700 dark:text-white">Kinderen met ADHD, autisme of andere neurodiversiteit</span>
 								</li>
 								<li class="flex items-start">
 									<span class="text-primary mr-2">✓</span>
-									<span>Leerlingen met dyslexie of andere leerbehoeften</span>
+									<span class="text-gray-700 dark:text-white">Leerlingen met dyslexie of andere leerbehoeften</span>
 								</li>
 								<li class="flex items-start">
 									<span class="text-primary mr-2">✓</span>
-									<span>Visueel of auditief beperkte kinderen</span>
+									<span class="text-gray-700 dark:text-white">Visueel of auditief beperkte kinderen</span>
 								</li>
 								<li class="flex items-start">
 									<span class="text-primary mr-2">✓</span>
-									<span>Iedereen die op zijn eigen manier leert</span>
+									<span class="text-gray-700 dark:text-white">Iedereen die op zijn eigen manier leert</span>
 								</li>
 							</ul>
 						</CardContent>
 					</Card>
+				</div>
+				
+				<div class="space-y-6">
+					<div class="space-y-4">
+						<h3 class="text-2xl font-bold text-gray-700 dark:text-white">De App Die Meegaat</h3>
+						<p class="text-lg text-gray-700 dark:text-white">
+							Transformeer je tablet in een veilige en volledige digitale leer omgeving! Onze app brengt inclusief technologieonderwijs direct in je huiskamer.
+						</p>
+					</div>
 					
-					<div class="text-center">
-						<Button size="lg" variant="default">
-							<Laptop class="mr-2 h-5 w-5" />
-							Download de App →
-						</Button>
-						<p class="mt-2 text-sm text-muted-foreground">30 dagen gratis proberen</p>
+					<div class="space-y-4">
+						<h4 class="font-bold text-xl text-gray-700 dark:text-white">Bijzondere kenmerken:</h4>
+						<ul class="space-y-2">
+							<li class="flex items-start">
+								<span class="text-primary mr-2 font-bold">•</span>
+								<span class="text-gray-700 dark:text-white"><strong>Werkt offline</strong> - perfecte voor onderweg</span>
+							</li>
+							<li class="flex items-start">
+								<span class="text-primary mr-2 font-bold">•</span>
+								<span class="text-gray-700 dark:text-white"><strong>Toegankelijk ontwerp</strong> voor verschillende behoeften</span>
+							</li>
+							<li class="flex items-start">
+								<span class="text-primary mr-2 font-bold">•</span>
+								<span class="text-gray-700 dark:text-white"><strong>Ouderportaal</strong> om voortgang te volgen</span>
+							</li>
+							<li class="flex items-start">
+								<span class="text-primary mr-2 font-bold">•</span>
+								<span class="text-gray-700 dark:text-white"><strong>Speels leren</strong> met badges en uitdagingen</span>
+							</li>
+							<li class="flex items-start">
+								<span class="text-primary mr-2 font-bold">•</span>
+								<span class="text-gray-700 dark:text-white"><strong>Verschillende moeilijkheidsgraden</strong> in één app</span>
+							</li>
+						</ul>
+					</div>
+					
+					<!-- Star rating and button side by side -->
+					<div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+						<div class="flex items-center gap-4 p-4 bg-primary/10 rounded-lg">
+							<Star class="h-8 w-8 text-primary flex-shrink-0" />
+							<div>
+								<p class="font-bold text-lg text-gray-700 dark:text-white">4.6/5 sterren</p>
+								<p class="text-sm text-muted-foreground">450+ reviews</p>
+							</div>
+						</div>
+						
+						<div class="text-center lg:text-left">
+							<Button size="lg" variant="default">
+								<Laptop class="mr-2 h-5 w-5" />
+								Download de App →
+							</Button>
+							<p class="mt-2 text-sm text-muted-foreground">30 dagen gratis proberen</p>
+						</div>
 					</div>
 				</div>
 			</div>
@@ -837,11 +983,11 @@
 	</section>
 
 	<!-- Section 7: Contact & Testimonials -->
-	<section class="py-20 bg-muted/50">
+	<section class="py-20 bg-muted">
 		<div class="container mx-auto px-4">
 			<!-- Testimonials -->
 			<div class="max-w-4xl mx-auto mb-20">
-				<h2 class="text-3xl md:text-4xl font-bold text-center mb-12">Wat Anderen Zeggen</h2>
+				<h2 class="text-3xl md:text-4xl font-bold text-center mb-12 text-gray-700 dark:text-white">Wat Anderen Zeggen</h2>
 				
 				<div class="space-y-8">
 					<Card class="p-6">
@@ -875,7 +1021,7 @@
 			
 			<!-- Contact -->
 			<div class="max-w-4xl mx-auto">
-				<h2 class="text-3xl md:text-5xl font-bold text-center mb-4">Contact</h2>
+				<h2 class="text-3xl md:text-5xl font-bold text-center mb-4 text-gray-700 dark:text-white">Contact</h2>
 				<p class="text-xl text-center text-muted-foreground mb-2">Vragen? We Helpen Graag!</p>
 				<div class="w-20 h-1 bg-primary mx-auto mb-12"></div>
 				
@@ -941,11 +1087,11 @@
 	</section>
 
 	<!-- Footer -->
-	<footer class="py-20 bg-blackened-steel text-white">
+	<footer class="py-20 bg-background text-foreground">
 		<div class="container mx-auto px-4">
 			<div class="max-w-4xl mx-auto text-center space-y-8">
 				<div>
-					<h3 class="text-2xl font-bold mb-6">Waarom Toekomst School?</h3>
+					<h3 class="text-2xl font-bold mb-6 text-gray-700 dark:text-white">Waarom Toekomst School?</h3>
 					<div class="grid sm:grid-cols-2 md:grid-cols-3 gap-4 text-left max-w-3xl mx-auto">
 						<div class="flex items-start">
 							<span class="text-primary mr-2">✓</span>
@@ -953,7 +1099,11 @@
 						</div>
 						<div class="flex items-start">
 							<span class="text-primary mr-2">✓</span>
-							<span>1.200+ tevreden leerlingen dit jaar</span>
+							<span>4500+ tevreden leerlingen sinds start</span>
+						</div>
+						<div class="flex items-start">
+							<span class="text-primary mr-2">✓</span>
+							<span>al ruim 8 jaar actief</span>
 						</div>
 						<div class="flex items-start">
 							<span class="text-primary mr-2">✓</span>
@@ -970,16 +1120,16 @@
 					</div>
 				</div>
 				
-				<div class="pt-8 border-t border-white/20">
+				<div class="pt-8 border-t border-border">
 					<h3 class="text-xl font-bold mb-4">Start Vandaag Nog</h3>
 					<p class="mb-6">De toekomst wacht niet. Begin met kleine stapjes en ontdek wat mogelijk is.</p>
-					<Button size="lg" variant="default" class="bg-white text-blackened-steel hover:bg-white/90">
+					<Button size="lg" variant="default">
 						🚀 Begin Je Digitale Reis →
 					</Button>
 				</div>
 				
 				<div class="pt-8">
-					<p class="text-lg italic text-white/80">
+					<p class="text-lg italic text-muted-foreground">
 						"Technologie is er voor iedereen - laten we ervoor zorgen dat iedereen er ook bij kan."
 					</p>
 				</div>
@@ -1026,25 +1176,13 @@
 		
 		<Dialog.Footer>
 			<Button class="group w-full">
-				<span>{selectedNiveau?.buttonText}</span>
+				<span class="whitespace-pre-line">{selectedNiveau?.buttonText}</span>
 				<TrendingUp class="ml-2 h-4 w-4 group-hover:translate-x-1 transition-transform" />
 			</Button>
 		</Dialog.Footer>
 	</Dialog.Content>
 </Dialog.Root>
 
-<!-- Theme Toggle Button for Testing -->
-<button 
-	onclick={toggleTheme}
-	class="fixed bottom-4 right-4 z-50 p-3 rounded-full bg-primary text-primary-foreground shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-110"
-	title="Toggle theme for testing"
->
-	{#if theme === 'light'}
-		🌙
-	{:else}
-		☀️
-	{/if}
-</button>
 
 <style>
 	/* Additional animations */
@@ -1081,146 +1219,4 @@
 		margin: 15px;
 	}
 	
-	/* Light Theme - Keep original teal/copper colors, just fix backgrounds */
-	.light-theme {
-		--background: 220 13% 98%;
-		--foreground: 222.2 84% 4.9%;
-		--card: 220 13% 99%;
-		--card-foreground: 222.2 84% 4.9%;
-		--popover: 220 13% 99%;
-		--popover-foreground: 222.2 84% 4.9%;
-		/* Keep original teal/copper primary */
-		--primary: 25 74% 55%; /* Original copper/orange */
-		--primary-foreground: 0 0% 100%;
-		/* Keep original teal secondary */
-		--secondary: 184 24% 49%; /* Original teal */
-		--secondary-foreground: 0 0% 100%;
-		--muted: 220 13% 96%;
-		--muted-foreground: 215.4 16.3% 46.9%;
-		--accent: 184 24% 49%; /* Teal accent */
-		--accent-foreground: 0 0% 100%;
-		--destructive: 0 84.2% 60.2%;
-		--destructive-foreground: 210 40% 98%;
-		--border: 214.3 31.8% 91.4%;
-		--input: 214.3 31.8% 91.4%;
-		--ring: 25 74% 55%; /* Copper ring */
-	}
-	
-	/* Dark Theme - Fix green backgrounds and add section variety */
-	.dark-theme .bg-muted\/50 {
-		background-color: hsl(220 14% 15%) !important; /* dark gray */
-	}
-	
-	.dark-theme .bg-muted {
-		background-color: hsl(220 14% 12%) !important; /* darker gray */
-	}
-	
-	.dark-theme .bg-background {
-		background-color: hsl(220 14% 8%) !important; /* darkest gray */
-	}
-	
-	/* Different section backgrounds for dark theme */
-	.dark-theme section:nth-of-type(2) {
-		/* Leren op jouw niveau - medium dark */
-		background-color: hsl(220 14% 10%) !important;
-	}
-	
-	.dark-theme section:nth-of-type(3) {
-		/* Klaar om te beginnen - lighter dark */
-		background-color: hsl(220 14% 15%) !important;
-	}
-	
-	.dark-theme section:nth-of-type(4) {
-		/* Voor docenten - medium dark */
-		background-color: hsl(220 14% 10%) !important;
-	}
-	
-	.dark-theme section:nth-of-type(5) {
-		/* Docent on demand - lighter dark */
-		background-color: hsl(220 14% 15%) !important;
-	}
-	
-	.dark-theme section:nth-of-type(6) {
-		/* Thuis verder ontdekken - medium dark */
-		background-color: hsl(220 14% 10%) !important;
-	}
-	
-	/* Light theme section backgrounds and text */
-	.light-theme {
-		background-color: hsl(var(--background));
-		color: hsl(var(--foreground));
-	}
-	
-	.light-theme section {
-		background-color: hsl(var(--background)) !important;
-		color: hsl(var(--foreground)) !important;
-	}
-	
-	.light-theme .bg-muted\/50 {
-		background-color: hsl(220 13% 96%) !important; /* very light gray instead of white */
-	}
-	
-	.light-theme .bg-background {
-		background-color: hsl(220 13% 98%) !important; /* off-white instead of pure white */
-	}
-	
-	/* Softer hero section colors */
-	.light-theme section:first-of-type {
-		background: linear-gradient(135deg, hsl(220 13% 98%) 0%, hsl(220 13% 95%) 50%, hsl(220 13% 98%) 100%) !important;
-	}
-	
-	/* Different section backgrounds for light theme */
-	.light-theme section:nth-of-type(2) {
-		/* Leren op jouw niveau */
-		background-color: hsl(220 13% 98%) !important;
-	}
-	
-	.light-theme section:nth-of-type(3) {
-		/* Klaar om te beginnen */
-		background-color: hsl(220 13% 96%) !important;
-	}
-	
-	.light-theme section:nth-of-type(4) {
-		/* Voor docenten */
-		background-color: hsl(220 13% 98%) !important;
-	}
-	
-	.light-theme section:nth-of-type(5) {
-		/* Docent on demand */
-		background-color: hsl(220 13% 96%) !important;
-	}
-	
-	.light-theme section:nth-of-type(6) {
-		/* Thuis verder ontdekken */
-		background-color: hsl(220 13% 98%) !important;
-	}
-	
-	/* Light theme text overrides */
-	.light-theme .text-white {
-		color: hsl(var(--foreground)) !important;
-	}
-	
-	.light-theme .text-white\/90 {
-		color: hsl(var(--foreground) / 0.9) !important;
-	}
-	
-	.light-theme .text-white\/60 {
-		color: hsl(var(--foreground) / 0.6) !important;
-	}
-	
-	/* Keep original stairs colors */
-	.light-theme #stairGradient stop:first-child {
-		stop-color: #D87C3D !important;
-		stop-opacity: 0.6 !important;
-	}
-	
-	.light-theme #stairGradient stop:nth-child(2) {
-		stop-color: #7E746F !important;
-		stop-opacity: 0.5 !important;
-	}
-	
-	.light-theme #stairGradient stop:last-child {
-		stop-color: #D87C3D !important;
-		stop-opacity: 0.6 !important;
-	}
 </style>
